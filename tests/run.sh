@@ -115,6 +115,10 @@ if want cli; then
   printf '{"rom_dir": "~/elsewhere"}\n' >"$XDG_CONFIG_HOME/omarchy-arcade/config.json"
   [[ $("$A" rom-dir) == "$HOME/elsewhere" ]] || tfail "rom_dir from config.json with ~"
   pass "rom_dir from config.json, ~ expanded"
+  # MAME runs from Arcade's state folder, so a relative rom_dir must become absolute.
+  printf '{"rom_dir": "elsewhere"}\n' >"$XDG_CONFIG_HOME/omarchy-arcade/config.json"
+  [[ $(cd / && "$A" rom-dir) == "$HOME/elsewhere" ]] || tfail "relative rom_dir"
+  pass "relative rom_dir is taken from home, absolute"
   rm -f "$XDG_CONFIG_HOME/omarchy-arcade/config.json"
 
   "$A" list >"$T/list"
@@ -129,8 +133,9 @@ if want cli; then
 
   expect_exit 2 "unknown game: exits 2" -- "$A" play nope
   expect_exit 2 "unknown command: exits 2" -- "$A" frobnicate
-  "$A" help | grep -q 'arcade play brick' || tfail "help"
-  pass "help"
+  "$A" help >"$T/help"
+  grep -q 'arcade play brick' "$T/help" && ! grep -q 'set -euo\|export PATH' "$T/help" || { cat "$T/help"; tfail "help"; }
+  pass "help prints the usage and no code"
 fi
 
 # ---------------------------------------------------------------------------

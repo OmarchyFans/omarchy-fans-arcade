@@ -153,10 +153,15 @@ ShellRoot {
     run(g, 0.5)
     check("last ball ends the game", g.phase === "over", g.phase)
 
-    // High score tracking.
-    g.highScore = 0
-    g.addScore(120)
-    check("score beats the high score", g.highScore === g.score && g.score > 0, g.highScore)
+    // High score tracking: only going past the old best counts, a tie doesn't.
+    g.newGame()
+    g.highScore = 500
+    g.addScore(500)
+    check("a tie is not a new high score", !g.beatHigh && g.highScore === 500, g.beatHigh)
+    g.addScore(10)
+    check("beating the best is a new high score", g.beatHigh && g.highScore === 510, g.highScore)
+    g.newGame()
+    check("a new game clears the new-high-score flag", !g.beatHigh)
 
     // Enter after game over starts over.
     g.newGame()

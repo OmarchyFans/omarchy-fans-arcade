@@ -49,6 +49,7 @@ FocusScope {
   property real mouseTarget: -1                // paddle x the mouse asked for, -1 = keyboard
   property int bricksLeft: 0
   property string banner: ""                   // short message over the field
+  property bool beatHigh: false                // this game went past the old high score
 
   function color(key, fallback) { return theme[key] || fallback }
   function baseSpeed() { return Math.min(340 * Math.pow(1.08, level - 1), 620) }
@@ -95,7 +96,7 @@ FocusScope {
   }
 
   function newGame() {
-    level = 1; lives = 3; score = 0
+    level = 1; lives = 3; score = 0; beatHigh = false
     paddleX = (fieldW - paddleW) / 2
     banner = Levels.layout(1).name
     bannerTimer.restart()
@@ -109,7 +110,7 @@ FocusScope {
 
   function addScore(points) {
     score += points
-    if (score > highScore) { highScore = score; newHighScore(score) }
+    if (score > highScore) { highScore = score; beatHigh = true; newHighScore(score) }
   }
 
   function loseLife() {
@@ -351,7 +352,7 @@ FocusScope {
       }
       Text {
         anchors.horizontalCenter: parent.horizontalCenter
-        text: game.phase === "over" ? "Score " + game.score + (game.score > 0 && game.score >= game.highScore ? "  ·  new high score!" : "") + "\nEnter to play again  ·  Esc to quit"
+        text: game.phase === "over" ? "Score " + game.score + (game.beatHigh ? "  ·  new high score!" : "") + "\nEnter to play again  ·  Esc to quit"
             : game.phase === "paused" ? "P or Space to resume  ·  Esc to quit"
             : game.phase === "serve" ? "Space or click to launch  ·  ← → or mouse to move  ·  P pause" : ""
         horizontalAlignment: Text.AlignHCenter

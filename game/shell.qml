@@ -37,6 +37,8 @@ ShellRoot {
     id: scoreView
     path: root.scoreFile
     printErrors: false
+    // quit() writes and exits right away: the write must finish first.
+    blockWrites: true
     onLoaded: {
       try {
         var n = parseInt(JSON.parse(text()).high, 10)

@@ -81,6 +81,8 @@ rom_dir() {
   [[ -n $d ]] || d="$HOME/Games/arcade"
   # shellcheck disable=SC2088  # a literal "~" from the JSON file, expanded by hand
   [[ $d == "~" || $d == "~/"* ]] && d="$HOME${d:1}"
+  # A relative path means relative to home; MAME later runs from another folder.
+  [[ $d == /* ]] || d="$HOME/$d"
   printf '%s\n' "$d"
 }
 
@@ -165,7 +167,7 @@ main() {
     update-check)   shift; exec /usr/bin/bash "$ARCADE_DIR/lib/update.sh" check "$@" ;;
     update-dismiss) shift; exec /usr/bin/bash "$ARCADE_DIR/lib/update.sh" dismiss "$@" ;;
     update-run)     shift; exec /usr/bin/bash "$ARCADE_DIR/lib/update.sh" run "$@" ;;
-    help|-h|--help) sed -n '3,19p' "$SELF" | sed 's/^# \{0,1\}//' ;;
+    help|-h|--help) sed -n '3,17p' "$SELF" | sed 's/^# \{0,1\}//' ;;
     *) echo "arcade: unknown command '$1' (try: arcade help)" >&2; return 2 ;;
   esac
 }
