@@ -1,0 +1,23 @@
+# Local state / caches
+.cache/
+build/
+dist/
+node_modules/
+
+# User content — NEVER commit game data
+roms/
+dumps/
+*.zip
+*.7z
+*.chd
+*.inp
+
+# Emulator binaries are fetched at install time, never vendored
+cores/
+emulators/
+
+# Editor / OS
+.DS_Store
+*.swp
+.idea/
+.vscode/
