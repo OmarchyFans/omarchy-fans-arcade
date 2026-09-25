@@ -12,6 +12,14 @@ feature that involves shipping content.
 > catalog of metadata and hashes, plus code that runs on the user's machine and
 > operates on content the user already has.
 
+## What 0.1.0 ships
+
+- **Brick Blitz**, an original game written for Arcade under the MIT license. It is not a
+  copy of any commercial title and doesn't use one's name, art or code.
+- **Launchers** that start MAME, which the user installs from their own distribution,
+  with ROM files the user supplies. Arcade checks those files with MAME's own
+  `-verifyroms`. It never downloads, links to or bundles them.
+
 ## Why
 
 ### Game ROMs are not free, and will not be for decades

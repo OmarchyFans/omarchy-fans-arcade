@@ -1,6 +1,9 @@
 # Arcade — design
 
-Status: **design phase**, 2026-09-24. Nothing here is built yet.
+Status: founding design, 2026-09-24. **0.1.0 ships only local play**: Brick Blitz plus
+MAME launchers for your own ROMs. The detailed, reviewed plan for online play, ratings,
+the Cosmos app-chain and zk-STARK verified scores is [ROADMAP.md](ROADMAP.md), which
+supersedes the milestones below where they differ.
 
 ## Principles
 

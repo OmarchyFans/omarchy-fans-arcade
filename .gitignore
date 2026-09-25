@@ -16,6 +16,9 @@ dumps/
 cores/
 emulators/
 
+# Claude Code worktrees
+.claude/
+
 # Editor / OS
 .DS_Store
 *.swp

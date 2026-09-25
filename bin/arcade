@@ -1,0 +1,172 @@
+#!/bin/bash
+#
+# arcade — launch Arcade games.
+#
+#   arcade play brick                     Brick Blitz (built in, nothing else needed)
+#   arcade play pacman|galaga|ssf2        a MAME game, from your own ROM files
+#   arcade list                           what is ready to play, and what is missing
+#   arcade rom-dir [--open]               print (and create) the ROM folder; --open shows it
+#   arcade help                           this text
+#   arcade update-check|update-dismiss|update-run ...   see lib/update.sh
+#
+# Arcade never downloads, links to, or ships ROMs. MAME games need MAME installed
+# (pacman -S mame) and your own ROM zips in the ROM folder, ~/Games/arcade unless
+# "rom_dir" in ~/.config/omarchy-arcade/config.json says otherwise.
+#
+# Every tool is an absolute path or comes from root-owned system folders, never the
+# caller's PATH. The ARCADE_* variables exist for the test suite.
+set -euo pipefail
+export PATH="/usr/share/omarchy/bin:/usr/local/bin:/usr/bin:/bin"
+
+SELF="$(readlink -f -- "${BASH_SOURCE[0]}")"
+ARCADE_DIR="$(cd -- "$(dirname -- "$SELF")/.." && pwd)"
+CONFIG="${XDG_CONFIG_HOME:-$HOME/.config}/omarchy-arcade/config.json"
+STATE="${XDG_STATE_HOME:-$HOME/.local/state}/omarchy-arcade"
+MAME="${ARCADE_MAME:-/usr/bin/mame}"
+QUICKSHELL="${ARCADE_QUICKSHELL:-/usr/bin/quickshell}"
+NOTIFY="${ARCADE_NOTIFY:-/usr/bin/notify-send}"
+
+GAMES=(brick pacman galaga ssf2)
+
+game_title() {
+  case "$1" in
+    brick)  echo "Brick Blitz" ;;
+    pacman) echo "Pac-Man" ;;
+    galaga) echo "Galaga" ;;
+    ssf2)   echo "Super Street Fighter II" ;;
+    *)      return 1 ;;
+  esac
+}
+
+# Zip names that can hold the game. MAME's pacman (Midway) is a clone of puckman
+# (Namco): a merged set keeps it inside puckman.zip.
+game_zips() {
+  case "$1" in
+    pacman) echo "pacman puckman" ;;
+    *)      echo "$1" ;;
+  esac
+}
+
+# What else MAME may need next to the game zip. Merged and non-merged sets
+# already contain it; split sets do not. -verifyroms has the final word.
+game_extras() {
+  case "$1" in
+    pacman) echo "puckman.zip" ;;
+    galaga) echo "namco51.zip namco54.zip" ;;
+    ssf2)   echo "qsound.zip" ;;
+    *)      echo "" ;;
+  esac
+}
+
+have_rom() { # have_rom ID DIR — is any zip (or folder) that can hold the game there?
+  local z
+  for z in $(game_zips "$1"); do
+    [[ -f $2/$z.zip || -d $2/$z ]] && return 0
+  done
+  return 1
+}
+
+mame_version() { "$MAME" -version 2>/dev/null | head -n1 | cut -d' ' -f1; }
+
+say() { # say TITLE BODY — a desktop notification, and the same text on stderr
+  printf '%s: %s\n' "$1" "$2" >&2
+  [[ -x $NOTIFY ]] && "$NOTIFY" -a Arcade -i applications-games "$1" "$2" 2>/dev/null || true
+}
+
+rom_dir() {
+  local d=""
+  if [[ -f $CONFIG ]]; then
+    d=$(jq -r '.rom_dir // empty | strings' "$CONFIG" 2>/dev/null || true)
+  fi
+  [[ -n $d ]] || d="$HOME/Games/arcade"
+  # shellcheck disable=SC2088  # a literal "~" from the JSON file, expanded by hand
+  [[ $d == "~" || $d == "~/"* ]] && d="$HOME${d:1}"
+  printf '%s\n' "$d"
+}
+
+play_brick() {
+  [[ -x $QUICKSHELL ]] || { say "Brick Blitz" "Quickshell is missing ($QUICKSHELL). It ships with Omarchy; reinstall the omarchy-shell package."; return 1; }
+  mkdir -p "$STATE"
+  exec "$QUICKSHELL" -n -p "$ARCADE_DIR/game/shell.qml"
+}
+
+play_mame() {
+  local id=$1 title dir out bad
+  title=$(game_title "$id")
+  if [[ ! -x $MAME ]]; then
+    say "$title needs MAME" "Install it with your package manager: pacman -S mame. Then add your own $id.zip to $(rom_dir)."
+    return 3
+  fi
+  dir=$(rom_dir)
+  if [[ ! -d $dir ]]; then
+    say "$title: no ROM folder" "Create $dir and put your own $id.zip in it. Arcade does not provide ROMs. Run: arcade rom-dir --open"
+    return 4
+  fi
+  if ! have_rom "$id" "$dir"; then
+    local extra; extra=$(game_extras "$id")
+    say "$title: ROM not found" "Put your own $id.zip in $dir${extra:+ (split sets also need: ${extra// /, })}. It must match your MAME version ($(mame_version))."
+    return 5
+  fi
+  # MAME checks every file against its own list: missing device ROMs, wrong
+  # revisions and zips made for another MAME version all show up here.
+  out=$("$MAME" -rompath "$dir" -verifyroms "$id" 2>&1 || true)
+  if ! grep -Eq "^romset $id (\[[^]]*\] )?is (good|best available)" <<<"$out"; then
+    bad=$(grep -E 'NOT FOUND|INCORRECT|NEEDS REDUMP' <<<"$out" | head -n 3 | sed 's/  */ /g' | paste -sd ';' - || true)
+    say "$title: ROM check failed" "${bad:-MAME rejected $id.zip.} Your ROMs must match MAME $(mame_version)."
+    return 6
+  fi
+  # MAME writes cfg/, nvram/ and friends into the working directory.
+  mkdir -p "$STATE/mame"
+  cd "$STATE/mame"
+  exec "$MAME" -rompath "$dir" -skip_gameinfo "$id"
+}
+
+cmd_play() {
+  local id=${1:-}
+  case "$id" in
+    brick) play_brick ;;
+    pacman|galaga|ssf2) play_mame "$id" ;;
+    "") echo "usage: arcade play <$(IFS='|'; echo "${GAMES[*]}")>" >&2; return 2 ;;
+    *) echo "arcade: unknown game '$id' (try: arcade list)" >&2; return 2 ;;
+  esac
+}
+
+cmd_list() {
+  local id dir status
+  dir=$(rom_dir)
+  for id in "${GAMES[@]}"; do
+    if [[ $id == brick ]]; then
+      status="ready"
+    elif [[ ! -x $MAME ]]; then
+      status="needs MAME (pacman -S mame)"
+    elif have_rom "$id" "$dir"; then
+      status="ROM found in $dir"
+    else
+      status="add your own $id.zip to $dir"
+    fi
+    printf '%-8s %-26s %s\n' "$id" "$(game_title "$id")" "$status"
+  done
+}
+
+cmd_rom_dir() {
+  local dir; dir=$(rom_dir)
+  mkdir -p "$dir"
+  printf '%s\n' "$dir"
+  if [[ ${1:-} == --open ]]; then
+    setsid -f xdg-open "$dir" >/dev/null 2>&1 </dev/null || true
+  fi
+}
+
+main() {
+  case "${1:-help}" in
+    play)           shift; cmd_play "$@" ;;
+    list)           cmd_list ;;
+    rom-dir)        shift; cmd_rom_dir "$@" ;;
+    update-check)   shift; exec /usr/bin/bash "$ARCADE_DIR/lib/update.sh" check "$@" ;;
+    update-dismiss) shift; exec /usr/bin/bash "$ARCADE_DIR/lib/update.sh" dismiss "$@" ;;
+    update-run)     shift; exec /usr/bin/bash "$ARCADE_DIR/lib/update.sh" run "$@" ;;
+    help|-h|--help) sed -n '3,19p' "$SELF" | sed 's/^# \{0,1\}//' ;;
+    *) echo "arcade: unknown command '$1' (try: arcade help)" >&2; return 2 ;;
+  esac
+}
+main "$@"

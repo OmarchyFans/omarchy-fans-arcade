@@ -1,0 +1,21 @@
+name: ci
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+permissions:
+  contents: read
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      # shellcheck and jq come preinstalled on the runner image. The Brick Blitz
+      # rules group needs Quickshell and skips itself here; it runs locally.
+      - name: Tools
+        run: shellcheck --version | head -n2 && jq --version
+      - name: Tests
+        run: tests/run.sh

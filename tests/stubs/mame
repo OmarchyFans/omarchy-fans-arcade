@@ -1,0 +1,22 @@
+#!/bin/bash
+# Stand-in for /usr/bin/mame in tests/run.sh.
+#   STUB_MAME_VERIFY=good|bad   what -verifyroms reports (default good)
+#   STUB_LOG                    every call's argv and working directory is appended here
+printf '%s\n' "cwd=$PWD argv=$*" >>"${STUB_LOG:-/dev/null}"
+case "${1:-}" in
+  -version) echo "0.289 (mame0289)"; exit 0 ;;
+esac
+for a in "$@"; do
+  if [[ $a == -verifyroms ]]; then
+    id=${*: -1}
+    if [[ ${STUB_MAME_VERIFY:-good} == good ]]; then
+      echo "romset $id is good"
+      echo "1 romsets found, 1 were OK."
+      exit 0
+    fi
+    echo "$id      : 51xx.bin (1024 bytes) - NOT FOUND"
+    echo "romset $id is bad"
+    exit 2
+  fi
+done
+exit 0

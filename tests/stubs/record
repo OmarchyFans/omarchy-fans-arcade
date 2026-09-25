@@ -1,0 +1,4 @@
+#!/bin/bash
+# Stand-in for notify-send and quickshell in tests/run.sh: appends its argv to STUB_LOG.
+printf '%s\n' "$(basename "$0") $*" >>"${STUB_LOG:-/dev/null}"
+exit 0

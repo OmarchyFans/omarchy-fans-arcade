@@ -1,107 +1,112 @@
 # Arcade
 
-**The open arcade for Omarchy.** Play the classics, fight your friends with rollback
-netcode, and climb verified leaderboards — from your desktop, with no account required
-to start.
+Arcade games from your Omarchy bar.
 
-An Omarchy.Fans product by ModPunk. MIT licensed.
+- **Brick Blitz**, an original brick-breaker, plays the moment you install. You don't
+  need anything else.
+- **Pac-Man**, **Galaga** and **Super Street Fighter II** launch in MAME from your own
+  ROM files. Arcade checks them first and tells you exactly what's missing.
 
-> **Status: design phase.** This repository currently holds the architecture and the
-> legal position. No plugin code has shipped yet. See [docs/DESIGN.md](docs/DESIGN.md)
-> for the full build plan and [docs/LEGAL.md](docs/LEGAL.md) for what Arcade will and
-> will not distribute.
+An Omarchy.Fans product by ModPunk. MIT licensed, free, no account.
 
----
-
-## What Arcade is
-
-Arcade is a **client**, not a game library. It ships:
-
-- a **curated catalog** — metadata, ROM-set hashes, control maps, and per-title notes
-  on which games support rollback netplay, verified scores, 2-player versus, or co-op
-- a **core installer** that fetches emulators from upstream, on your machine, pinned
-  and hashed
-- a **session runner** that makes games behave correctly on a Wayland desktop —
-  rotation for vertical games, low-latency input and audio, gamepad hotplug, a
-  dedicated workspace, and idle-inhibit so your screen never locks mid-match
-- **three competition modes**, because arcade games are not one thing (see below)
-
-## What Arcade is not
-
-**Arcade ships no ROMs and no emulator binaries.** Not one. This is a deliberate
-architectural decision, not an oversight — see [docs/LEGAL.md](docs/LEGAL.md).
-
-You bring your own dumps. Arcade hashes them, matches them to the catalog, and tells
-you what you can play. For an empty install, a one-click fetch pulls the genuinely
-free content — the MAME project's freely-licensed titles, open-source arcade games,
-and the homebrew scene — so there is something playable in thirty seconds.
-
----
-
-## Three modes, three leaderboards
-
-A single "Elo score" does not describe arcade gaming. Arcade models three distinct
-kinds of competition:
-
-| Mode | Examples | How you are ranked |
-|---|---|---|
-| **Versus** | Street Fighter II, NeoGeo fighters, Bomberman | Glicko-2 rating, per ROM-set, seasonal |
-| **Score attack** | Galaga, Pac-Man, Donkey Kong | Verified high score from a re-simulated input replay |
-| **Co-op** | Metal Slug, TMNT, beat-'em-ups | Shared clear time and depth on a party board |
-
-Ratings are keyed on the **ROM-set hash**, never the display name. "Pac-Man" is twenty
-different sets with different difficulty; "Street Fighter II" spans six revisions with
-materially different balance. A leaderboard that ignores this is meaningless.
-
-## Verified scores
-
-Score-attack leaderboards are worthless if anyone can type a number into them. Arcade
-follows the approach the MAME Action Replay Page and Twin Galaxies have used for
-twenty-five years:
-
-1. You play on a hardened, pinned emulator build with save-states, pause, frame-skip
-   and cheats disabled.
-2. The run is captured as a deterministic **input log** — a few kilobytes, not a video.
-3. The server **re-simulates the input log headlessly** and confirms the score.
-
-Because input logs desync across emulator versions, the emulator build is pinned and
-hashed per season. A side effect: every match and every run is a tiny replay file, so
-spectating and match-of-the-week are nearly free.
-
-## Rollback netplay
-
-Versus play uses rollback netcode, which is the only thing that makes a stranger on
-the internet feel like a person sitting next to you. Rollback needs low round-trip
-latency, so matchmaking is **region-aware and ping-gated** — a global queue that pairs
-players who physically cannot play each other is worse than no queue at all.
-
-Peer-to-peer connections need NAT traversal. Most succeed directly; the rest need a
-relay, which is an optional hosted service. **Arcade works fully offline and on a LAN
-with no account and no server.**
-
----
-
-## Roadmap
-
-**v1 — no server required**
-Local play · curated catalog · bring-your-own-ROM import with hash verification ·
-couch co-op with two gamepads · score attack with verified leaderboards · attract mode
-
-**v2 — the social layer**
-Rollback versus · Glicko-2 ladders and seasons · presence and lobbies · spectating and
-replays · casual/handicap queue so new players are not destroyed in their first ten
-matches
-
-**v3 — events**
-Tournaments and brackets · achievements integration · profile portal and stats
+> Arcade never downloads, links to or includes game ROMs. Brick Blitz is our own game.
+> The MAME launchers only start games from files you already have.
 
 ## Install
 
-Not yet published. When it ships, it will be available through the Omarchy plugin
-marketplace and, like every Omarchy.Fans plugin, it will tell you in-app when a new
-version is out.
+```sh
+omarchy plugin add https://github.com/OmarchyFans/omarchy-fans-arcade --enable
+```
+
+This puts the gamepad chip in your bar. Click it and pick a game.
+
+Optionally, run the plugin's `install.sh` once. It creates Arcade's folders ahead of time
+and tells you what's ready. It installs no packages and changes nothing outside its own
+folders. Arcade works without it too.
+
+## Removal
+
+```sh
+~/.config/omarchy/plugins/fans.omarchy.arcade/uninstall.sh   # optional: settings and cache
+omarchy plugin remove fans.omarchy.arcade
+```
+
+`uninstall.sh` keeps your Brick Blitz high score unless you add `--purge`. It never
+touches your ROM folder.
+
+## Brick Blitz
+
+| Key | Action |
+|---|---|
+| ← → or A D, or the mouse | move the paddle |
+| Space or click | launch the ball |
+| P | pause |
+| Enter | play again after a game over |
+| Esc, or close the window | quit |
+
+- There are five layouts. After the last one they start over, a little faster.
+- Tough bricks take two or three hits.
+- Clearing a level gives you an extra ball, up to five.
+- Your high score is saved in `~/.local/state/omarchy-arcade/brick.json`.
+- The colors follow your current Omarchy theme.
+
+Brick Blitz runs as its own small Quickshell window, separate from your bar, so a
+problem in the game can't affect your desktop.
+
+## Pac-Man, Galaga and Super Street Fighter II (your own ROMs)
+
+These run in [MAME](https://www.mamedev.org/), the open-source arcade emulator.
+
+1. Install MAME with your package manager: `pacman -S mame`.
+2. Put **your own** ROM files in `~/Games/arcade/`. The chip's *Open ROM folder* button
+   opens it.
+
+| Game | File | Also needed for split sets |
+|---|---|---|
+| Pac-Man | `pacman.zip`, or `puckman.zip` for a merged set | `puckman.zip` |
+| Galaga | `galaga.zip` | `namco51.zip`, `namco54.zip` |
+| Super Street Fighter II | `ssf2.zip` | `qsound.zip` |
+
+**ROMs must match your MAME version.** MAME changes its ROM lists over time, so a zip made
+for an older MAME can be rejected. Before starting a game, Arcade runs MAME's own ROM check.
+If something is wrong, you get a notification naming the missing or bad file.
+
+`arcade list` shows what's ready to play. To keep ROMs somewhere else, set
+`"rom_dir": "~/path/to/roms"` in `~/.config/omarchy-arcade/config.json`.
+
+## Command line
+
+The plugin ships `bin/arcade`:
+
+```
+arcade play brick|pacman|galaga|ssf2
+arcade list
+arcade rom-dir [--open]
+```
+
+## Updates
+
+The chip checks for a newer published version when it loads and every six hours after
+that. Each check is one small request to GitHub, cached, and sends no personal data. When
+a new version is out, a dot appears on the chip, and the menu shows what changed with an
+**Update…** button. The update runs `omarchy plugin update`, which shows the changes and
+asks before doing anything.
+
+To turn the check off, set `"update_check": false` in
+`~/.config/omarchy-arcade/config.json`, or use the widget's setting.
+
+## What leaves your machine
+
+Only the update check: a request for this repository's `manifest.json`, plus
+`CHANGELOG.md` when a newer version is out. Games, scores and ROMs stay local.
+
+## Roadmap
+
+Online play with rollback netcode, per-game ratings, verified leaderboards and tournaments
+are planned. None of it is built yet. See [docs/ROADMAP.md](docs/ROADMAP.md) for the design,
+and [docs/LEGAL.md](docs/LEGAL.md) for what Arcade will and won't distribute.
 
 ## License
 
-MIT — see [LICENSE](LICENSE). The license covers Arcade's own code and catalog
-metadata. It does not and cannot cover game data, which Arcade never distributes.
+MIT, see [LICENSE](LICENSE). The license covers Arcade's own code and Brick Blitz. It doesn't
+and can't cover game ROMs, which Arcade never distributes.
