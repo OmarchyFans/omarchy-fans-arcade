@@ -50,6 +50,7 @@ FocusScope {
   property int bursts: 0                       // glint bursts this game
   property bool beatHigh: false
   property string banner: ""
+  property bool clearBanner: false             // true when banner was set by this clear (resolve())
   property real rngState: 1
 
   // The well, rows 0..total-1 from the top (the first `hidden` rows are above the
@@ -97,7 +98,7 @@ FocusScope {
   readonly property alias boardView: boardView
   readonly property alias activeView: activeView
 
-  function color(key, fallback) { return theme[key] || fallback }
+  function color(key, fallback) { return (theme && theme[key]) || fallback }
   function shapeColor(kind) {
     var s = Pieces.shape(kind)
     return s ? color(s.color, s.fallback) : "transparent"
@@ -249,14 +250,18 @@ FocusScope {
 
   // ---- locking and clearing -------------------------------------------------------------
   function lockPiece() {
-    var c = pieceCells(), above = true
+    // The board Repeater only draws the visible rows, so a cell that locks in a
+    // hidden row is invisible on screen even though it can still block later
+    // moves. Treat locking any cell in a hidden row as a top-out, not only a
+    // piece that locks entirely above the well.
+    var c = pieceCells(), hiddenLock = false
     for (var i = 0; i < c.length; i++) {
       board[idx(c[i].x, c[i].y)] = { k: c[i].k, g: c[i].g }
-      if (c[i].y >= hidden) above = false
+      if (c[i].y < hidden) hiddenLock = true
     }
     curKind = ""
     lockTimer = 0
-    if (above) { publishBoard(); gameOver(); return }   // locked entirely above the well
+    if (hiddenLock) { publishBoard(); gameOver(); return }   // locked into a hidden row
     resolve()
     publishBoard()
   }
@@ -307,9 +312,10 @@ FocusScope {
     clearing = list
     clearRows = full
     clearTimer = clearDelay
-    if (nb > 1) flash("Glint chain ×" + nb)
-    else if (nb === 1) flash("Glint burst")
-    else if (full.length >= 3) flash(full.length + " rows!")
+    clearBanner = false
+    if (nb > 1) { flash("Glint chain ×" + nb); clearBanner = true }
+    else if (nb === 1) { flash("Glint burst"); clearBanner = true }
+    else if (full.length >= 3) { flash(full.length + " rows!"); clearBanner = true }
   }
 
   // The flash is over: empty the burst cells, drop the rows above each full row,
@@ -332,7 +338,14 @@ FocusScope {
     clearRows = []
     clearTimer = 0
     var want = 1 + Math.floor(lines / Pieces.LINES_PER_LEVEL)
-    if (want > level) { level = want; flash("Level " + level) }
+    if (want > level) {
+      level = want
+      // A level-up can land on the same clear as a burst/chain/rows banner; combine
+      // them instead of one replacing the other.
+      if (clearBanner) { banner = banner + "  Level " + level; bannerTimer.restart() }
+      else flash("Level " + level)
+      clearBanner = false
+    }
     spawnNext()
     publishBoard()
   }
@@ -368,7 +381,7 @@ FocusScope {
     phase = "over"
     curKind = ""
     banner = ""
-    downHeld = false
+    leftHeld = false; rightHeld = false; downHeld = false; dasDir = 0
     publish()
   }
   function pause() { if (phase === "play") phase = "paused" }

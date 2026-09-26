@@ -52,7 +52,7 @@ FocusScope {
   readonly property real shieldTime: 2.0
   readonly property real clearTime: 2.2
   readonly property int maxLives: 5
-  readonly property int extraLifeEvery: 20000
+  readonly property int extraLifeEvery: 25000  // our own threshold, not a classic's
   readonly property int maxEnemyShots: 16
   // Delegate pools: each Repeater keeps a fixed count and hides the spare
   // delegates, so a shot or spark appearing never rebuilds the whole Repeater.
@@ -137,13 +137,17 @@ FocusScope {
 
   // ---- the formation ---------------------------------------------------------------
   // A slot's position now: the lattice sways side to side and breathes in and out.
+  // slotPos() is called for every formed/entering/returning enemy on every physics
+  // substep (hundreds of times a second), so it writes into one reused scratch object
+  // instead of allocating a fresh one each call. Every caller reads .x/.y right away
+  // and never holds onto the object, so reusing it is safe.
+  readonly property var _slotScratch: ({ x: 0, y: 0 })
   function slotPos(e) {
     var spread = 1 + 0.07 * Math.sin(formT * 1.4)
     var sway = 50 * Math.sin(formT * 0.55)
-    return {
-      x: fieldW / 2 + (e.col - (Layouts.COLS - 1) / 2) * slotSpacing * spread + sway,
-      y: formTop + e.row * rowSpacing + 4 * Math.sin(formT * 2 + e.col * 0.6)
-    }
+    _slotScratch.x = fieldW / 2 + (e.col - (Layouts.COLS - 1) / 2) * slotSpacing * spread + sway
+    _slotScratch.y = formTop + e.row * rowSpacing + 4 * Math.sin(formT * 2 + e.col * 0.6)
+    return _slotScratch
   }
 
   function makeEnemy(kind, col, row, group, delay, path) {
@@ -468,7 +472,11 @@ FocusScope {
     if (b.spawnCd <= 0) {
       b.spawnCd = Paths.bossSpawnGap(b.k)
       // Spent escorts are dropped first, so a long fight never outgrows the pool.
-      enemies = enemies.filter(function (x) { return x.state !== "dead" })
+      // Review fix: this used to reassign `enemies` (enemies.filter(...)), replacing
+      // the array reference inside a physics substep. Splice it in place instead, as
+      // every other in-step mutation does; the array is still replaced (once) by
+      // publish() at the end of the frame.
+      for (var d = enemies.length - 1; d >= 0; d--) if (enemies[d].state === "dead") enemies.splice(d, 1)
       var alive = enemies.length
       for (var s = -1; s <= 1 && alive < 4; s += 2) {
         var e = makeEnemy("n", 0, 0, -1, 0, "drop")

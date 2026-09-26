@@ -6,8 +6,8 @@ import "motion.js" as Motion
 // Circuit Crawl: the whole game. You are Byte, a small robot crawling the traces
 // of a circuit board to collect every bit. Four bugs crawl after you (bugs.js).
 // A debug chip patches them for a while: patched bugs turn around, slow down and
-// can be squashed for 200, 400, 800 and 1600 (all four on one chip is a full
-// debug, +1000). Twice a board a coffee cup appears under the pen: it scores, and
+// can be squashed for 150, 300, 600 and 1200 (all four on one chip is a full
+// debug, +900). Twice a board a coffee cup appears under the pen: it scores, and
 // it overclocks Byte for a few seconds, so he outruns everything.
 //
 // The board is 21x21 tiles (mazes.js) drawn in a fixed 580x616 field scaled to
@@ -34,7 +34,8 @@ FocusScope {
   readonly property real mazeX: (fieldW - 21 * tile) / 2
   readonly property real mazeY: hudH + 8
   readonly property int maxLives: 5
-  readonly property int extraLifeAt: 10000
+  // The famous original's bonus life lands at 10,000; ours is its own number.
+  readonly property int extraLifeAt: 15000
   readonly property real hitRange: 0.6          // tiles between centres that count as a touch
   readonly property real readyDelay: 1.6        // seconds of READY before a life starts
   readonly property real dyingDelay: 1.6
@@ -44,7 +45,9 @@ FocusScope {
   readonly property real overclockSeconds: 4
   readonly property real overclockBoost: 1.35
   readonly property real returnSpeed: 13        // tiles/s: a squashed bug running home
-  readonly property var coffeeValues: [100, 300, 500, 700, 1000, 2000, 3000, 5000]
+  // Our own coffee-value table (the famous original's bonus-item values are
+  // 100/300/500/700/1000/2000/3000/5000; ours climbs on a different curve).
+  readonly property var coffeeValues: [90, 240, 420, 650, 950, 1500, 2300, 3400]
 
   // ---- state --------------------------------------------------------------------
   property string phase: "ready"               // ready | play | dying | clear | paused | over
@@ -96,13 +99,19 @@ FocusScope {
   property real dyingShown: 1
   property bool overclocked: false
 
-  function color(key, fallback) { return theme[key] || fallback }
+  // Guarded against a theme with a hole or a null theme object (not verified
+  // live: a defensive fix, not something the test suite alone can prove).
+  function color(key, fallback) { return (theme && theme[key]) || fallback }
   function rand() { return Motion.rand(rng) }
   function setSeed(n) { seed = n | 0; rng.s = n | 0 }
 
   // ---- speeds --------------------------------------------------------------------
+  // Bug fix (difficulty curve): bugSpeed() used to grow faster and cap higher
+  // than heroSpeed(), so from level 7 on the bugs were quicker than Byte and
+  // stayed that way. Same growth rate and cap as Byte now, just a lower base
+  // (6.0 vs 6.5), so Byte is always a little ahead, level after level.
   function heroSpeed() { return 6.5 * Math.min(1 + 0.05 * (level - 1), 1.3) * (overclock > 0 ? overclockBoost : 1) }
-  function bugSpeed() { return 6.0 * Math.min(1 + 0.07 * (level - 1), 1.45) }
+  function bugSpeed() { return 6.0 * Math.min(1 + 0.05 * (level - 1), 1.3) }
   function inTunnel(b) {
     return maze.rows[Math.round(b.y)].indexOf("T") >= 0
         && (b.x < 3.5 || b.x > maze.w - 4.5)
@@ -116,6 +125,59 @@ FocusScope {
     return 0
   }
   function coffeeValueFor(lv) { return coffeeValues[Math.min(lv, coffeeValues.length) - 1] }
+
+  // ---- Byte's own color: a small hue guard --------------------------------------
+  // Byte's shape (a rounded-square robot with a visor, antenna and treads) is
+  // already distinct from a wedge-with-a-mouth hero, but a theme whose accent is
+  // yellow would still tint him yellow by pure coincidence. Nudge only that band
+  // toward blue so no theme accidentally recreates the famous look; every other
+  // accent colour passes through untouched.
+  readonly property real yellowHueLo: 40
+  readonly property real yellowHueHi: 70
+  function hexToHsl(hex) {
+    var h = ("" + hex).replace("#", "")
+    if (h.length === 3) h = h[0] + h[0] + h[1] + h[1] + h[2] + h[2]
+    var r = parseInt(h.substr(0, 2), 16) / 255, g = parseInt(h.substr(2, 2), 16) / 255, b = parseInt(h.substr(4, 2), 16) / 255
+    var max = Math.max(r, g, b), min = Math.min(r, g, b)
+    var l = (max + min) / 2, d = max - min, hue = 0, s = 0
+    if (d !== 0) {
+      s = l > 0.5 ? d / (2 - max - min) : d / (max + min)
+      if (max === r) hue = ((g - b) / d + (g < b ? 6 : 0))
+      else if (max === g) hue = (b - r) / d + 2
+      else hue = (r - g) / d + 4
+      hue *= 60
+    }
+    return { h: hue, s: s, l: l }
+  }
+  function hueToRgbChannel(p, q, t) {
+    if (t < 0) t += 1
+    if (t > 1) t -= 1
+    if (t < 1 / 6) return p + (q - p) * 6 * t
+    if (t < 1 / 2) return q
+    if (t < 2 / 3) return p + (q - p) * (2 / 3 - t) * 6
+    return p
+  }
+  function hslToHex(h, s, l) {
+    var hn = (((h % 360) + 360) % 360) / 360
+    var r, g, b
+    if (s === 0) { r = g = b = l }
+    else {
+      var q = l < 0.5 ? l * (1 + s) : l + s - l * s
+      var p = 2 * l - q
+      r = hueToRgbChannel(p, q, hn + 1 / 3); g = hueToRgbChannel(p, q, hn); b = hueToRgbChannel(p, q, hn - 1 / 3)
+    }
+    function toHex(x) { var v = Math.round(x * 255); return (v < 16 ? "0" : "") + v.toString(16) }
+    return "#" + toHex(r) + toHex(g) + toHex(b)
+  }
+  // The colour Byte is actually drawn in: the theme's accent, unless its hue
+  // falls in the classic-hero yellow band, in which case it's rotated to blue.
+  function heroColor() {
+    var hex = color("accent", "#7aa2f7")
+    if (!/^#[0-9a-fA-F]{6}$/.test(hex)) return hex
+    var hsl = hexToHsl(hex)
+    if (hsl.h >= yellowHueLo && hsl.h <= yellowHueHi && hsl.s > 0.2) return hslToHex(210, hsl.s, hsl.l)
+    return hex
+  }
 
   // ---- drawing accessors (rule 5: never hold an element in a delegate) ------------
   readonly property var offField: ({ x: -9, y: -9, dx: 0, dy: 0, state: "pen", patched: false, color: "red", fallback: "#f7768e", text: "", time: 0, name: "" })
@@ -273,8 +335,16 @@ FocusScope {
     if (a.dx !== 0 || a.dy !== 0) { a.fx = a.dx; a.fy = a.dy }
   }
 
+  // A reused object (never held past the call that reads it): heroTile() used to
+  // allocate fresh every call, and it's read every physics substep from eat() and
+  // at every bug decision, so mutating one cache in place avoids that hot-loop
+  // churn.
+  property var heroTileCache: ({ c: 0, r: 0, fx: -1, fy: 0 })
   function heroTile() {
-    return { c: Mazes.wrapCol(maze, Math.round(hero.x)), r: Math.round(hero.y), fx: hero.fx, fy: hero.fy }
+    var t = heroTileCache
+    t.c = Mazes.wrapCol(maze, Math.round(hero.x)); t.r = Math.round(hero.y)
+    t.fx = hero.fx; t.fy = hero.fy
+    return t
   }
 
   // Byte eats what is on the tile under him once he is near its centre.
@@ -287,8 +357,10 @@ FocusScope {
     bitList.setProperty(i, "alive", false)
     bitsLeft--
     eaten++
-    if (kind === "chip") { addScore(50); startPatch() }
-    else addScore(10)
+    // Our own points per pickup: the famous original's are 10 for a plain dot
+    // and 50 for a power item; ours are 12 and 60.
+    if (kind === "chip") { addScore(60); startPatch() }
+    else addScore(12)
     if (coffeeShown < coffeeAt.length && eaten >= coffeeAt[coffeeShown]) {
       coffeeShown++
       coffeeOn = true
@@ -316,8 +388,19 @@ FocusScope {
       var b = bugs[i]
       if (b.state === "return" || b.state === "enter") continue
       b.patched = true
-      if (b.state === "active") { b.dx = -b.dx; b.dy = -b.dy }
+      if (b.state === "active") {
+        b.dx = -b.dx; b.dy = -b.dy
+        holdReversal(b)
+      }
     }
+  }
+  // Bug fix: a forced reversal (patch or scatter/chase switch) used to be
+  // silently undone when a bug was exactly at a tile centre, because the very
+  // next decide() (in the same frame) would re-pick a direction at that
+  // junction and could choose something other than the reversal. Holding the
+  // flip for one decide() makes the reversal always take effect, as intended.
+  function holdReversal(b) {
+    if (Motion.atCenter(b) && Mazes.walkable(maze, b.x + b.dx, b.y + b.dy)) b.holdDir = true
   }
   function endPatch() {
     patchTime = 0
@@ -353,6 +436,7 @@ FocusScope {
   }
 
   function bugDecide(b) {
+    if (b.holdDir) { b.holdDir = false; return }         // a just-forced reversal stands as-is
     var here = { c: Mazes.wrapCol(maze, b.x), r: b.y }
     if (b.state === "return") {
       if (here.c === maze.exit.c && here.r === maze.exit.r) { b.state = "enter"; b.dx = 0; b.dy = 0; return }
@@ -364,7 +448,7 @@ FocusScope {
     var target = b.patched ? null : Bugs.targetFor(b.name, here, heroTile(), mode, maze.w, maze.h)
     var pick
     if (target === null) pick = opts.length === 1 ? opts[0] : opts[Math.floor(rand() * opts.length)]
-    else pick = Bugs.chooseDir(opts, here, target)
+    else pick = Bugs.chooseDir(opts, here, target, maze.w)
     setBugDir(b, pick)
   }
 
@@ -414,7 +498,10 @@ FocusScope {
     mode = modeIndex % 2 === 0 ? "scatter" : "chase"
     modeTime = modeIndex < sched.length ? sched[modeIndex] : 0
     for (var i = 0; i < bugs.length; i++)
-      if (bugs[i].state === "active" && !bugs[i].patched) { bugs[i].dx = -bugs[i].dx; bugs[i].dy = -bugs[i].dy }
+      if (bugs[i].state === "active" && !bugs[i].patched) {
+        bugs[i].dx = -bugs[i].dx; bugs[i].dy = -bugs[i].dy
+        holdReversal(bugs[i])
+      }
   }
 
   function collide() {
@@ -463,7 +550,9 @@ FocusScope {
     Motion.advance(hero, heroSpeed() * dt, maze.w, heroDecide)
     eat()
     if (phase !== "play") return
-    if (coffeeOn && Motion.dist(hero, { x: maze.coffee.c, y: maze.coffee.r }) < hitRange) drinkCoffee()
+    // Inlined rather than Motion.dist(hero, {x:..,y:..}) so this per-substep
+    // check (every 1/240 s while coffee is out) doesn't allocate a point object.
+    if (coffeeOn && Math.hypot(hero.x - maze.coffee.c, hero.y - maze.coffee.r) < hitRange) drinkCoffee()
 
     collide()
     if (phase !== "play") return
@@ -568,7 +657,7 @@ FocusScope {
           delegate: Rectangle {
             width: 14; height: 12; radius: 3
             anchors.verticalCenter: parent ? parent.verticalCenter : undefined
-            color: game.color("accent", "#7aa2f7")
+            color: game.heroColor()
             Rectangle { x: 3; y: 3; width: 8; height: 3; radius: 1.5; color: game.color("dark_background", "#13141c") }
           }
         }
@@ -826,7 +915,7 @@ FocusScope {
         x: game.byteX * game.tile; y: game.byteY * game.tile
         width: game.tile; height: game.tile
         visible: game.phase !== "over"
-        readonly property color body: game.color("accent", "#7aa2f7")
+        readonly property color body: game.heroColor()
         readonly property bool rolling: game.phase === "play"
         scale: game.dyingShown
         rotation: game.phase === "dying" ? (1 - game.dyingShown) * 540 : 0

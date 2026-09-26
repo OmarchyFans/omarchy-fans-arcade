@@ -82,6 +82,7 @@ FocusScope {
   property int dragFrom: -1
   property real levelT: 0
   property real clearT: 0
+  property bool bannerWasRunning: false      // so pause()/resume() can stop and restart bannerTimer
 
   // The board, as plain arrays mutated in place (publish() copies them into the
   // cells model once per frame).
@@ -97,6 +98,12 @@ FocusScope {
   property var rotCells: []
 
   function color(key, fallback) { return theme[key] || fallback }
+  // A theme color at low alpha for the "picked up" fill: a fixed white wash reads
+  // as nearly invisible against a light theme's own light background.
+  function selectedFill() {
+    var t = Qt.color(color("accent", "#7aa2f7"))   // theme colors are strings, not color values
+    return Qt.rgba(t.r, t.g, t.b, 0.22)
+  }
   function kindColor(k) {
     if (k >= 0 && k < Levels.KINDS.length) return color(Levels.KINDS[k].color, Levels.KINDS[k].fallback)
     if (k === Board.CORE) return color("accent", "#7aa2f7")
@@ -112,6 +119,7 @@ FocusScope {
   ListModel { id: cells }                    // one entry per cell: { k, s, ox, oy, pop }
   readonly property alias cellModel: cells
   readonly property alias tileView: tileView
+  readonly property alias bannerTimer: bannerTimer
 
   function resetAnim() {
     var z = []
@@ -361,6 +369,11 @@ FocusScope {
     var keep = {}
     for (j = 0; j < made.length; j++) keep[made[j].at] = true
     var cleared = [], gc = goalCounts.slice()
+    // The cell a special is built on stays on the board (it isn't cleared), but it
+    // was still part of the matched line, so it counts toward that kind's salvage
+    // goal same as the cells that did clear.
+    for (j = 0; j < made.length; j++)
+      for (var t2 = 0; t2 < levelInfo.goals.length; t2++) if (levelInfo.goals[t2].kind === made[j].kind) gc[t2]++
     for (j = 0; j < hit.length; j++) {
       var i = hit[j]
       if (keep[i]) continue
@@ -585,8 +598,19 @@ FocusScope {
   Timer { id: bannerTimer; interval: 1800; onTriggered: game.banner = "" }
 
   // ---- input ------------------------------------------------------------------------
-  function pause() { if (phase === "play") { phase = "paused"; dragging = false } }
-  function resume() { if (phase === "paused") { phase = "play"; idleTime = 0 } }
+  // A level banner fades on its own timer (the one Timer the rules allow); stop
+  // it while paused so it can't fade out mid-pause, and pick it back up on resume.
+  function pause() {
+    if (phase !== "play") return
+    phase = "paused"; dragging = false
+    bannerWasRunning = bannerTimer.running
+    if (bannerWasRunning) bannerTimer.stop()
+  }
+  function resume() {
+    if (phase !== "paused") return
+    phase = "play"; idleTime = 0
+    if (bannerWasRunning) { bannerWasRunning = false; bannerTimer.restart() }
+  }
   function togglePause() { if (phase === "play") pause(); else if (phase === "paused") resume() }
 
   // Arrows: with a part picked up, swap it that way; otherwise move the cursor
@@ -612,9 +636,10 @@ FocusScope {
     clickCell(cursor)
   }
 
-  // A click (or Space) on a cell.
+  // A click (or Space) on a cell. Ignored mid-cascade: the board is still
+  // resolving and a cell's part can change kind before it settles.
   function clickCell(i) {
-    if (phase !== "play") return
+    if (phase !== "play" || busy !== "idle") return
     clearHint()
     cursor = i
     if (selected === i) { selected = -1; return }
@@ -785,7 +810,7 @@ FocusScope {
         visible: game.selected >= 0
         x: game.colOf(game.selected) * game.cell + 1; y: game.rowOf(game.selected) * game.cell + 1
         width: game.cell - 2; height: game.cell - 2; radius: 12
-        color: Qt.rgba(1, 1, 1, 0.06)
+        color: game.selectedFill()
         border.width: 3
         border.color: game.color("accent", "#7aa2f7")
       }

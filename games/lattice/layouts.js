@@ -78,9 +78,10 @@ function chunk(n) {
 
 function hpFor(kind) { return kind === "p" ? 2 : 1 }
 
-// Points for destroying an enemy; one caught mid-dive is worth double.
+// Points for destroying an enemy; one caught mid-dive is worth double. Our own
+// numbers, deliberately not a famous formation shooter's bee/butterfly/boss table.
 function pointsFor(kind, diving) {
-  var p = kind === "p" ? 150 : (kind === "r" ? 80 : 50)
+  var p = kind === "p" ? 170 : (kind === "r" ? 90 : 40)
   return diving ? p * 2 : p
 }
 

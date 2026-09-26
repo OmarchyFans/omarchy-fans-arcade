@@ -280,6 +280,15 @@ ShellRoot {
     check("four in a row builds an H-bus where the part landed", g.specials[at(7, 2)] === "h" && g.kinds[at(7, 2)] === 5, g.specials[at(7, 2)])
     check("building a Bus scores its bonus", g.cascadeLog[0].points === 3 * 10 + Levels.SPECIAL_BONUS.h, g.cascadeLog[0].points)
 
+    // Level 1's salvage goal is kind 2. The four-in-a-row is kind 2 here too, so
+    // the cell the new Bus is built on (kept, not cleared) must still count.
+    fresh(g)
+    g.setBoard(rows([[7, 0, "2"], [7, 1, "2"], [7, 3, "2"], [6, 2, "2"]]))
+    g.trySwap(at(6, 2), at(7, 2))
+    stepUntil(g, function () { return g.busy === "clear" })
+    check("the cell a new special is built on still counts toward its salvage goal",
+          g.specials[at(7, 2)] === "h" && g.goalCounts[0] === 4, g.goalCounts[0])
+
     fresh(g)
     g.setBoard(rows([[7, 0, "5"], [7, 1, "5"], [7, 3, "5"], [7, 4, "5"], [6, 2, "5"]]))
     g.trySwap(at(6, 2), at(7, 2))
@@ -401,6 +410,19 @@ ShellRoot {
     check("clicking two neighbours swaps them", g.busy === "swap")
     settle(g)
 
+    // A click (or Space, which reaches clickCell through action()) is ignored
+    // while the board is mid-cascade: the cell under it can change kind before
+    // the board goes idle again.
+    fresh(g)
+    g.setBoard(rows([[5, 0, "5"], [6, 0, "5"], [7, 1, "5"], [4, 0, "4"], [7, 2, "4"]]))
+    g.trySwap(at(7, 1), at(7, 0))
+    check("mid-swap, a click selects nothing", (g.clickCell(at(3, 3)), g.selected === -1 && g.busy === "swap"))
+    stepUntil(g, function () { return g.busy === "clear" || g.busy === "fall" }, 2)
+    check("mid-cascade (falling/clearing), a click still selects nothing",
+          g.busy !== "idle" && (g.clickCell(at(3, 3)), g.selected === -1), g.busy)
+    settle(g, 5)
+    check("once idle again, clicking works as usual", (g.clickCell(at(3, 3)), g.selected === at(3, 3)), g.selected)
+
     // ---- hint ----------------------------------------------------------------------------------
     fresh(g)
     for (i = 0; i < 4.9 * 60; i++) g.step(1 / 60)
@@ -458,6 +480,29 @@ ShellRoot {
     g.lostFocus()
     check("losing focus pauses", g.phase === "paused", g.phase)
     check("losing focus forgets a drag", !g.dragging && g.dragFrom === -1)
+
+    // A level banner fades on its own timer; it must not keep counting down (and
+    // so fade) while the game is paused.
+    fresh(g)
+    g.flash("Testing")
+    check("flash starts the banner timer", g.bannerTimer.running)
+    g.pause()
+    check("pausing stops the banner timer", !g.bannerTimer.running)
+    g.resume()
+    check("resuming restarts the banner timer", g.bannerTimer.running)
+    g.bannerTimer.stop()
+    g.pause(); g.resume()
+    check("resuming leaves an already-stopped banner timer alone", !g.bannerTimer.running)
+
+    // The "picked up" tile fill must come from the theme, not a fixed white wash
+    // that all but disappears against a light theme's own light background.
+    g.theme = { accent: "#7aa2f7" }
+    var darkFill = g.selectedFill()
+    g.theme = { accent: "#3b5bdb" }
+    var lightFill = g.selectedFill()
+    check("the selected-part fill follows the theme's accent color, not a fixed white",
+          darkFill.r !== lightFill.r && darkFill.a > 0 && darkFill.a < 0.5, JSON.stringify([darkFill, lightFill]))
+    g.theme = {}
 
     // ---- drawing follows the board -------------------------------------------------------------
     fresh(g)

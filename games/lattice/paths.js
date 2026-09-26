@@ -48,9 +48,12 @@ function squadChance(stage)  { return stage < 3 ? 0 : Math.min(0.6, 0.25 + 0.05 
 function formFireInterval(stage) { return stage < 2 ? 0 : Math.max(0.9, 4.5 - 0.35 * (stage - 2)) }
 
 // ---- the Monolith ----------------------------------------------------------------
-function bossHp(k)        { return 36 + 24 * (k - 1) }
+// The first Monolith (k=1) is eased a little: fewer HP and a slower shield spin, so
+// its gaps are easier to time for a player meeting it for the first time. Later ones
+// (k>=2) keep the original curve, so they stay just as hard as before.
+function bossHp(k)        { return k === 1 ? 26 : 36 + 24 * (k - 1) }
 function bossPlates(k)    { return Math.min(6, 3 + k) }
-function bossSpin(k)      { return 1.0 + 0.25 * k }              // rad/s
+function bossSpin(k)      { return k === 1 ? 0.8 : 1.0 + 0.25 * k }              // rad/s
 function bossFireGap(k)   { return Math.max(0.9, 2.6 - 0.25 * k) }
 function bossSpawnGap(k)  { return Math.max(2.4, 5.0 - 0.5 * k) }
 function bossBonus(k)     { return 2000 + 1000 * k }

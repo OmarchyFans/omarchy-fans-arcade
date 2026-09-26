@@ -81,6 +81,18 @@ ShellRoot {
     check("four turns come back to the start", JSON.stringify(Pieces.cells("stair", 4)) === JSON.stringify(Pieces.cells("stair", 0))
           && JSON.stringify(Pieces.cells("stair", 1)) !== JSON.stringify(Pieces.cells("stair", 0)))
     check("gravity quickens with the level", Pieces.fallInterval(5) < Pieces.fallInterval(1) && Pieces.fallInterval(99) >= 0.06)
+    check("glints start well under half the pieces and still thin out with the level",
+          Pieces.glintChance(1) <= 0.2 && Pieces.glintChance(1) > Pieces.glintChance(10),
+          Pieces.glintChance(1) + " -> " + Pieces.glintChance(10))
+    var colorCounts = {}
+    for (i = 0; i < Pieces.SHAPES.length; i++) {
+      var ck = Pieces.SHAPES[i].color
+      colorCounts[ck] = (colorCounts[ck] || 0) + 1
+    }
+    var distinctColors = 0, maxShare = 0
+    for (var ck2 in colorCounts) { distinctColors++; maxShare = Math.max(maxShare, colorCounts[ck2]) }
+    check("shapes use as many distinct theme colors as the palette allows, with no color shared by more than two",
+          distinctColors >= 8 && maxShare <= 2, JSON.stringify(colorCounts))
 
     // ---- seeded dice and the bag ----------------------------------------------------------
     g.seed = 4242; g.newGame()
@@ -244,6 +256,17 @@ ShellRoot {
     run(g, 0.34)
     check("a glint outside cleared rows waits its turn", at(g, 0, 23) && at(g, 0, 23).g === true)
 
+    // A clear that both bursts a glint and crosses a level boundary must show both,
+    // not have the level-up banner replace the burst/chain/rows one.
+    fresh(g); g.lines = 7
+    fillRow(g, 23, [4, 5, 6])
+    g.setCell(2, 23, "arch", true)
+    place(g, "pip", 0, 4, 0)
+    g.hardDrop()
+    run(g, 0.34)
+    check("a burst and a level-up on the same clear share the banner",
+          g.banner.indexOf("Glint burst") >= 0 && g.banner.indexOf("Level 2") >= 0, g.banner)
+
     // ---- hold --------------------------------------------------------------------------------
     fresh(g)
     var k0 = g.curKind, k1 = g.queueAt(0).kind
@@ -273,6 +296,23 @@ ShellRoot {
     place(g, "hook", 0, 0, 0)                  // entirely in the hidden rows, resting on the stack
     g.hardDrop()
     check("locking entirely above the well ends the game", g.phase === "over", g.phase)
+
+    // The board Repeater only draws the visible rows, so a piece that locks with
+    // just part of itself in a hidden row is invisible there but still blocks play;
+    // that must end the game too, not only a piece that locks entirely hidden.
+    fresh(g)
+    g.setCell(4, 3, "flag", false)              // blocks the piece from falling any further
+    place(g, "hook", 0, 4, 1)                   // "#.","##": one cell in hidden row 1, two in visible row 2
+    g.hardDrop()
+    check("locking partly into a hidden row also ends the game", g.phase === "over", g.phase)
+
+    // gameOver must forget every held key, not just downHeld (newGame already does).
+    fresh(g); place(g, "pip", 0, 4, 20)
+    g.leftHeld = true; g.rightHeld = true; g.downHeld = true
+    for (y = 0; y < 4; y++) for (x = 4; x < 8; x++) g.setCell(x, y, "flag", false)
+    g.hardDrop()
+    check("game over clears every held key", g.phase === "over" && !g.leftHeld && !g.rightHeld && !g.downHeld,
+          g.leftHeld + "," + g.rightHeld + "," + g.downHeld)
 
     // ---- pause and focus ---------------------------------------------------------------------
     fresh(g); place(g, "pip", 0, 4, 3)
