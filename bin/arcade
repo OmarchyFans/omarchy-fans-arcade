@@ -29,6 +29,7 @@ QUICKSHELL="${ARCADE_QUICKSHELL:-/usr/bin/quickshell}"
 NOTIFY="${ARCADE_NOTIFY:-/usr/bin/notify-send}"
 PKG_ADD="${ARCADE_PKG_ADD:-/usr/bin/omarchy-pkg-add}"
 LAUNCH_TUI="${ARCADE_LAUNCH_TUI:-/usr/bin/omarchy-launch-tui}"
+OPEN="${ARCADE_OPEN:-/usr/bin/xdg-open}"
 
 GAMES=(brick pacman galaga ssf2)
 
@@ -106,6 +107,10 @@ interactive() {
   [[ -t 0 && -t 1 ]]
 }
 
+open_folder() { # show a folder in the file manager, without waiting for it
+  setsid -f "$OPEN" "$1" >/dev/null 2>&1 </dev/null || true
+}
+
 hold() { # keep a terminal Arcade opened on screen until the message is read
   interactive && read -rp "$1 Press Enter to close " _ || true
 }
@@ -161,13 +166,18 @@ play_mame() {
     fi
   fi
   dir=$(rom_dir)
+  # No ROM yet: from the bar, open the ROM folder (creating it) so the user
+  # lands where the file goes; a notification alone is easy to miss.
   if [[ ! -d $dir ]]; then
-    say "$title: no ROM folder" "Create $dir and put your own $id.zip in it. Arcade does not provide ROMs. Run: arcade rom-dir --open"
+    mkdir -p "$dir"
+    interactive || open_folder "$dir"
+    say "$title: add your ROM" "Arcade can't include $title. Put your own $id.zip in $dir (the folder just opened) and pick it again."
     return 4
   fi
   if ! have_rom "$id" "$dir"; then
     local extra; extra=$(game_extras "$id")
-    say "$title: ROM not found" "Put your own $id.zip in $dir${extra:+ (split sets also need: ${extra// /, })}. It must match your MAME version ($(mame_version))."
+    interactive || open_folder "$dir"
+    say "$title: add your ROM" "Arcade can't include $title. Put your own $id.zip in $dir${extra:+ (split sets also need: ${extra// /, })}, made for MAME $(mame_version), then pick it again."
     return 5
   fi
   # MAME checks every file against its own list: missing device ROMs, wrong
@@ -194,21 +204,30 @@ cmd_play() {
   esac
 }
 
+# What each game needs. --json is what the bar menu reads:
+#   [{id, title, state: ready|no-mame|no-rom|rom-found, note}]
 cmd_list() {
-  local id dir status
+  local id dir state status note json=0 rows=()
+  [[ ${1:-} == --json ]] && json=1
   dir=$(rom_dir)
   for id in "${GAMES[@]}"; do
     if [[ $id == brick ]]; then
-      status="ready"
+      state=ready;     status="ready";                          note="built in"
     elif [[ ! -x $MAME ]]; then
-      status="MAME installs on first play"
+      state=no-mame;   status="MAME installs on first play";    note="installs MAME first"
     elif have_rom "$id" "$dir"; then
-      status="ROM found in $dir"
+      state=rom-found; status="ROM found in $dir";              note="your ROM"
     else
-      status="add your own $id.zip to $dir"
+      state=no-rom;    status="add your own $id.zip to $dir";   note="needs $id.zip"
     fi
-    printf '%-8s %-26s %s\n' "$id" "$(game_title "$id")" "$status"
+    if (( json )); then
+      rows+=("$(jq -nc --arg id "$id" --arg title "$(game_title "$id")" --arg state "$state" --arg note "$note" \
+        '{id: $id, title: $title, state: $state, note: $note}')")
+    else
+      printf '%-8s %-26s %s\n' "$id" "$(game_title "$id")" "$status"
+    fi
   done
+  (( json )) && printf '%s\n' "${rows[@]}" | jq -sc . || true
 }
 
 cmd_rom_dir() {
@@ -216,14 +235,14 @@ cmd_rom_dir() {
   mkdir -p "$dir"
   printf '%s\n' "$dir"
   if [[ ${1:-} == --open ]]; then
-    setsid -f xdg-open "$dir" >/dev/null 2>&1 </dev/null || true
+    open_folder "$dir"
   fi
 }
 
 main() {
   case "${1:-help}" in
     play)           shift; cmd_play "$@" ;;
-    list)           cmd_list ;;
+    list)           shift; cmd_list "$@" ;;
     rom-dir)        shift; cmd_rom_dir "$@" ;;
     install-mame)   shift; cmd_install_mame "$@" ;;
     update-check)   shift; exec /usr/bin/bash "$ARCADE_DIR/lib/update.sh" check "$@" ;;

@@ -6,6 +6,8 @@
 - WIDE paddle, CATCH (the ball sticks until you send it off) and LASER (Space fires bolts).
 - SLOW ball, MULTI-ball (one ball becomes three), +1 extra ball and WARP to the next level.
 - The HUD shows the active paddle power-up; losing your last ball ends them all.
+- The menu shows which games are ready and which ROM each one still needs.
+- Picking a game whose ROM is missing opens the ROM folder, so you see where the file goes.
 
 ## 0.2.0
 

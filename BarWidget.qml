@@ -38,6 +38,27 @@ BarWidget {
     { id: "ssf2",   title: "Super Street Fighter II", note: "MAME · your ROM" }
   ]
 
+  // Which games are ready: `arcade list --json`, read each time the menu opens,
+  // so a ROM dropped into the folder shows up without restarting anything.
+  property var gameStatus: ({})
+  function refreshStatus() {
+    if (statusProc.running) return
+    statusProc.command = ["/usr/bin/bash", root.pluginDir + "/bin/arcade", "list", "--json"]
+    statusProc.running = true
+  }
+  Process {
+    id: statusProc
+    environment: root.childEnv
+    stdout: StdioCollector { id: statusOut; waitForEnd: true }
+    onExited: function(code) {
+      try {
+        var rows = JSON.parse(String(statusOut.text || "[]")), map = {}
+        for (var i = 0; i < rows.length; i++) map[rows[i].id] = rows[i]
+        root.gameStatus = map
+      } catch (e) { root.gameStatus = {} }
+    }
+  }
+
   function arcade(args) {
     menu.open = false
     Quickshell.execDetached({
@@ -106,7 +127,10 @@ BarWidget {
     slotSize: Style.bar.statusSlot
     fontSize: Style.font.caption
     tooltipText: "Arcade" + (root.updateAvailable ? " · Arcade " + root.updateInfo.latest + " is available" : (root.updateMismatch ? " · finish updating" : ""))
-    onPressed: menu.open = !menu.open
+    onPressed: {
+      menu.open = !menu.open
+      if (menu.open) root.refreshStatus()
+    }
     Rectangle {
       visible: root.updatePending
       anchors.top: parent.top; anchors.right: parent.right
@@ -173,17 +197,24 @@ BarWidget {
         delegate: Row {
           required property var modelData
           spacing: Style.space(4)
+          // What bin/arcade reports for this game right now (see refreshStatus).
+          readonly property var live: root.gameStatus[modelData.id] || null
+          readonly property bool missingRom: !!live && live.state === "no-rom"
           Button {
             text: modelData.title
             bordered: modelData.id === "brick"
             foreground: modelData.id === "brick" ? Color.accent : Color.popups.text
+            // Still clickable without its ROM: that opens the ROM folder.
+            opacity: parent.missingRom ? 0.55 : 1
             onClicked: root.arcade(["play", modelData.id])
           }
           Text {
             anchors.verticalCenter: parent.verticalCenter
             textFormat: Text.PlainText
-            text: modelData.note
-            color: Color.popups.text; opacity: 0.55; font.family: Style.font.family; font.pixelSize: Style.font.caption
+            text: parent.live ? parent.live.note : modelData.note
+            color: parent.missingRom ? Color.urgent : Color.popups.text
+            opacity: parent.missingRom ? 0.9 : 0.55
+            font.family: Style.font.family; font.pixelSize: Style.font.caption
           }
         }
       }

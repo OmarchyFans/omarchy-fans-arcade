@@ -13,6 +13,7 @@ export HOME="$T/home" XDG_CONFIG_HOME="$T/config" XDG_STATE_HOME="$T/state" XDG_
 export STUB_LOG="$T/stub.log"
 export ARCADE_MAME="$ROOT/tests/stubs/mame" ARCADE_NOTIFY="$ROOT/tests/stubs/record" ARCADE_QUICKSHELL="$ROOT/tests/stubs/record"
 export ARCADE_PKG_ADD="$ROOT/tests/stubs/pkg-add" ARCADE_LAUNCH_TUI="$ROOT/tests/stubs/record" ARCADE_INTERACTIVE=0
+export ARCADE_OPEN="$ROOT/tests/stubs/record"
 mkdir -p "$HOME" "$XDG_CONFIG_HOME" "$XDG_STATE_HOME" "$XDG_CACHE_HOME"
 A="$ROOT/bin/arcade"
 
@@ -107,12 +108,13 @@ if want cli; then
   reset_log
   ARCADE_MAME=$NOMAME STUB_PKG_INSTALL_TO=$NOMAME expect_exit 0 "install-mame --then: installs" -- "$A" install-mame --then galaga
   # The game starts detached; with no ROM folder yet, it says so.
-  wait_for_log "Galaga: no ROM folder" || tfail "install-mame --then should start the game"
+  wait_for_log "Galaga: add your ROM" || tfail "install-mame --then should start the game"
   pass "install-mame --then starts the picked game on its own"
   rm -f "$NOMAME"
   expect_exit 2 "install-mame --then an unknown game: exits 2" -- "$A" install-mame --then nope
 
   reset_log
+  rm -rf "$ROMS"
   ARCADE_MAME=$NOMAME ARCADE_INTERACTIVE=1 STUB_PKG_INSTALL_TO=$NOMAME expect_exit 4 "no MAME, at a terminal: installs inline, then checks ROMs" -- "$A" play galaga
   logged "pkg-add mame" && [[ -x $NOMAME ]] || tfail "inline install"
   pass "no MAME, at a terminal: installs inline and carries on"
@@ -123,12 +125,20 @@ if want cli; then
   logged "arcade install-mame" || tfail "fallback notification should name arcade install-mame"
   pass "no MAME and no launcher: notification names arcade install-mame"
 
+  rm -rf "$ROMS"
+  reset_log
   expect_exit 4 "no ROM folder: exits 4" -- "$A" play galaga
-  mkdir -p "$ROMS"
+  [[ -d $ROMS ]] && logged "record $ROMS" || tfail "no ROM folder: it should be created and opened"
+  pass "no ROM folder, from the bar: creates it and opens it"
   reset_log
   expect_exit 5 "no ROM zip: exits 5" -- "$A" play ssf2
-  logged "ssf2.zip" && logged "qsound.zip" && logged "0.289" || tfail "missing-ROM notification"
-  pass "missing ROM: names the zip, the device ROM and the MAME version"
+  logged "ssf2.zip" && logged "qsound.zip" && logged "0.289" && logged "can't include" || tfail "missing-ROM notification"
+  logged "record $ROMS" || tfail "missing ROM, from the bar: the ROM folder should open"
+  pass "missing ROM, from the bar: opens the ROM folder and names the zip, device ROM and MAME version"
+  reset_log
+  ARCADE_INTERACTIVE=1 expect_exit 5 "missing ROM at a terminal: exits 5" -- "$A" play ssf2
+  ! logged "record $ROMS" || tfail "at a terminal the ROM folder should not pop open"
+  pass "missing ROM at a terminal: says so without opening windows"
 
   : >"$ROMS/galaga.zip"
   reset_log
@@ -161,6 +171,12 @@ if want cli; then
   "$A" list >"$T/list"
   grep -q '^brick .*ready' "$T/list" && grep -q '^galaga .*ROM found' "$T/list" && grep -q '^ssf2 .*add your own ssf2.zip' "$T/list" || { cat "$T/list"; tfail "list"; }
   pass "list shows what is ready"
+  lj=$("$A" list --json)
+  state_of() { jq -r --arg id "$1" --arg k "$2" 'map(select(.id == $id))[0][$k]' <<<"$3"; }
+  [[ $(state_of brick state "$lj") == ready && $(state_of galaga state "$lj") == rom-found \
+     && $(state_of ssf2 state "$lj") == no-rom && $(state_of ssf2 note "$lj") == "needs ssf2.zip" ]] || { echo "$lj"; tfail "list --json"; }
+  [[ $(state_of pacman state "$(ARCADE_MAME=/nonexistent "$A" list --json)") == no-mame ]] || tfail "list --json without MAME"
+  pass "list --json gives the menu each game's state"
 
   reset_log
   expect_exit 0 "brick launches" -- "$A" play brick

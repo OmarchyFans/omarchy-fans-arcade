@@ -97,7 +97,7 @@ These run in [MAME](https://www.mamedev.org/), the open-source arcade emulator.
 for an older MAME can be rejected. Before starting a game, Arcade runs MAME's own ROM check.
 If something is wrong, you get a notification naming the missing or bad file.
 
-`arcade list` shows what's ready to play. To keep ROMs somewhere else, set
+The chip's menu shows which games are ready and which ROM each still needs, and picking a game whose ROM is missing opens the ROM folder. `arcade list` shows the same in a terminal. To keep ROMs somewhere else, set
 `"rom_dir": "~/path/to/roms"` in `~/.config/omarchy-arcade/config.json`.
 
 ## Command line
