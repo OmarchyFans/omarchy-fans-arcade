@@ -2,9 +2,16 @@
 
 Arcade games from your Omarchy bar.
 
-- **Five original games** play the moment you install, with nothing else needed:
-  **Brick Blitz** (brick-breaker), **Circuit Crawl** (maze chase), **Lattice Siege**
-  (formation shooter), **Glintfall** (falling blocks) and **Solder Snap** (match-three).
+- **Nine original games** play the moment you install, with nothing else needed:
+  - **Brick Blitz** (brick-breaker)
+  - **Circuit Crawl** (maze chase)
+  - **Lattice Siege** (formation shooter)
+  - **Glintfall** (falling blocks)
+  - **Solder Snap** (match-three)
+  - **Super MMA Fighter** (1-on-1 MMA)
+  - **Tetherwake** (vector space shooter)
+  - **Dockhop** (lane crossing)
+  - **Surge Rink** (air hockey)
 - **Pac-Man**, **Galaga** and **Super Street Fighter II** launch in MAME from your own
   ROM files. Arcade installs MAME for you the first time you pick one, checks your ROMs
   and tells you exactly what's missing.
@@ -130,6 +137,68 @@ or more.
 
 Use the mouse (drag or click two parts), or the arrows plus Space. R reroutes and H
 shows a hint.
+
+### Super MMA Fighter: 1-on-1 MMA
+
+Seven invented fighters, one per fighting style: a sambo grinder, a power counter-puncher,
+a rangy technician, a kickboxing sniper, a heavy hitter, a submission artist and a judo
+thrower.
+
+Each fighter's ratings and finish split are **anonymous averages of real elite fighters'
+public records** in that style. That means the numbers behind power, speed, kicks, clinch,
+wrestling, grappling, cardio and defense, and each fighter's share of KO, submission and
+decision wins. The character-select screen shows them the classic way.
+
+Those numbers drive everything: damage, stamina, takedown and submission odds, and how
+the CPU fights you. No fighter depicts a real person.
+
+- **Stand-up:** jabs, crosses, hooks, body shots, leg, body and head kicks, knees, blocks and
+  slip-counters.
+- **Clinch and takedowns:** knees and throws in the clinch; sprawl to stop a shot.
+- **Ground:** guard, half guard, side control, mount and back, with ground-and-pound.
+- **Submissions:** a tug of war. The attacker squeezes, the defender mashes to escape, and
+  a full meter is a **TAP OUT**.
+- **Rounds:** three, on a clock. Any fight that isn't finished goes to three judges, and the
+  decision can be unanimous, split or a draw.
+
+Modes: a ladder against the CPU (Easy, Normal or Hard), or two players on one keyboard.
+- **P1:** WASD, F strike, G kick, H special, J grapple.
+- **P2:** arrows, Ctrl strike, Shift kick, Enter special, `/` grapple.
+
+The select screen lists every move.
+
+### Tetherwake: vector space shooter
+
+Pilot a skiff through wrap-around space full of shattering debris and sleeping mines.
+- Your **tether** (Shift, Down or S) hooks debris or a mine and tows it on a spring line.
+  Press again to **fling** it.
+- A towed mine is disarmed until it hits something, and then it blows for double points.
+- Mines chain-react, ion gusts push you around, and from wave 4 a carrier crosses the field
+  laying mines.
+
+Left/right rotate, Up thrusts, Space fires.
+
+### Dockhop: lane crossing
+
+Guide a courier bot across lanes of warehouse traffic, then over a shaft of moving
+pallets and conveyors, into the dock bays at the top before the shift clock runs out.
+- **Boost** (Space) leaps two tiles.
+- Carry a **parcel** home for a bonus.
+- From shift 2, **flicker pads** power down under you.
+- Faster parking pays more.
+
+Arrows or WASD hop one tile.
+
+### Surge Rink: air hockey
+
+First to seven on a top-down rink.
+- Hold the surge key to charge a **SURGE** smash.
+- Glancing hits put **swerve** on the puck and make it curve.
+- A shot clock stops anyone stalling in their own half.
+
+Play the CPU up a ladder of tiers, or two players on one keyboard.
+- **P1:** WASD plus F/G/H or Space to surge. In one-player mode the mouse also works.
+- **P2:** arrows plus Ctrl/Shift/Enter.
 
 ## Pac-Man, Galaga and Super Street Fighter II (your own ROMs)
 

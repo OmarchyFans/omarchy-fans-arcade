@@ -2,10 +2,10 @@
   "schemaVersion": 1,
   "id": "fans.omarchy.arcade",
   "name": "Arcade",
-  "version": "0.4.0",
+  "version": "0.5.0",
   "author": "modpunk (omarchy.fans)",
   "license": "MIT",
-  "description": "Arcade games from your Omarchy bar. Five original games play the moment you install, with nothing else needed: Brick Blitz (a brick-breaker with power-ups), Circuit Crawl (maze chase), Lattice Siege (formation shooter), Glintfall (falling blocks) and Solder Snap (match-three). Pac-Man, Galaga and Super Street Fighter II launch in MAME from your own ROM files: Arcade installs MAME for you on first play, checks your ROMs and tells you exactly what is missing. It never downloads or links to games. Free, MIT licensed, no account. An Omarchy.Fans product by ModPunk.",
+  "description": "Arcade games from your Omarchy bar. Nine original games play the moment you install, with nothing else needed: Brick Blitz (a brick-breaker with power-ups), Circuit Crawl (maze chase), Lattice Siege (formation shooter), Glintfall (falling blocks), Solder Snap (match-three), Super MMA Fighter (1-on-1 MMA with invented fighters built from real fight statistics), Tetherwake (vector space shooter), Dockhop (lane crossing) and Surge Rink (air hockey). Pac-Man, Galaga and Super Street Fighter II launch in MAME from your own ROM files: Arcade installs MAME for you on first play, checks your ROMs and tells you exactly what is missing. It never downloads or links to games. Free, MIT licensed, no account. An Omarchy.Fans product by ModPunk.",
   "kinds": [
     "bar-widget"
   ],
