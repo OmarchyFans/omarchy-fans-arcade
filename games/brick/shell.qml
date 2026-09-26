@@ -81,6 +81,8 @@ ShellRoot {
       anchors.margins: 12
       focus: true
       theme: root.theme
+      // Live play seeds every new game from the clock; the tests set a seed.
+      autoSeed: true
       // ARCADE_BRICK_DROP=0..1 sets how often a broken brick drops a power-up
       // (for trying them out; the bar never sets it).
       dropChance: {
