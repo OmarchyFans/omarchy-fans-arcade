@@ -291,6 +291,8 @@ if want game; then
     # test brings its own ShellRoot, so the game's shell.qml is left out.
     for gj in "$ROOT"/games/*/game.json; do
       gid=$(jq -r .id "$gj")
+      # ARCADE_GAME_ONLY=<id> tests one game (games being built side by side).
+      [[ -n ${ARCADE_GAME_ONLY:-} && $gid != "$ARCADE_GAME_ONLY" ]] && continue
       tq="$ROOT/tests/${gid}_test.qml"
       [[ -f $tq ]] || tfail "$gid has no tests/${gid}_test.qml"
       G="$T/game-$gid"; mkdir -p "$G"
