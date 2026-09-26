@@ -8,7 +8,7 @@ Other
 
 ### Tags
 
-games, bar-widget
+games, bar, quickshell
 
 ### Suggest a missing tag
 
@@ -36,12 +36,12 @@ Capabilities the baseline scan will list, all by design:
 - **writes-user-config:** only ~/.config/omarchy-arcade, ~/.cache/omarchy-arcade and ~/.local/state/omarchy-arcade (the high score, and MAME's cfg/nvram for Arcade launches), plus the ROM folder ~/Games/arcade, which it creates when missing and never modifies.
 - **installer:** install.sh is optional (plugin add is enough), only creates those folders and reports what's ready. It installs no packages, needs no root and is idempotent. uninstall.sh removes Arcade's folders, keeps the high score unless --purge, and never touches ROMs.
 
-Testing: tests/run.sh runs offline against a stub MAME, a stub notify-send and a stub quickshell. It covers lint, marketplace layout rules, every CLI path, install/uninstall, the update helper against file:// fixtures, and 33 Brick Blitz rules run headless. CI runs it on every push.
+Testing: tests/run.sh runs offline against a stub MAME, a stub notify-send and a stub quickshell. It covers lint, marketplace layout rules, every CLI path, install/uninstall, the update helper against file:// fixtures, and 35 Brick Blitz rules run headless. CI runs it on every push.
 
 ### Submission checklist
 
-- [x] The repository is public and contains installation and removal instructions
-- [x] I have documented the plugin license and any external dependencies
-- [x] I own or have permission to submit this plugin and its preview assets
-- [x] The plugin does not overwrite user configuration without explicit consent
-- [x] I understand approval is for listing and is not a security review
+- [x] The repository is public and contains installation and removal instructions.
+- [x] I have documented the plugin license and any external dependencies.
+- [x] I confirm that I own or have permission to submit this plugin and its preview assets.
+- [x] The plugin does not overwrite user configuration without explicit consent.
+- [x] I understand that approval is for listing and is not a security review.
