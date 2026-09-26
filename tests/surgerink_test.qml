@@ -78,6 +78,21 @@ ShellRoot {
     check("the top rail bounces the puck back into the table", p.vy > 0 && p.y >= t.T + t.r, p.vy + " @" + p.y)
     check("a rail bounce loses a little speed", p.vy < 500 && p.vy > 350, p.vy)
 
+    // Sparks never draw off the table (seen live in the window margin before the fix):
+    // a burst in the top-right corner throws many outward; none may be left off-table.
+    versus()
+    g.sparks = []
+    g.burst(t.R - 4, t.T + 4, 0, 40)
+    var offTable = 0, burstStart = g.sparks.length
+    for (var si = 0; si < 120; si++) {
+      g.stepSparks(dt)
+      for (var sj = 0; sj < g.sparks.length; sj++) {
+        var sp = g.sparks[sj]
+        if (sp.y < t.T || sp.y > t.B || sp.x < t.L - 24 || sp.x > t.R + 24) offTable++
+      }
+    }
+    check("sparks that fly off the table are dropped, not drawn in the margin", burstStart > 0 && offTable === 0, offTable + " off-table of " + burstStart)
+
     p = mk(90, t.cy - t.mouth - 50, -500, 0)
     goal = glide(p, 0.3, t)
     check("the end rail beside the mouth bounces, no goal", goal === 0 && p.vx > 0, goal + "/" + p.vx)

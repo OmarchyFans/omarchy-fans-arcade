@@ -398,6 +398,9 @@ FocusScope {
       if (f.life <= 0) { sparks.splice(i, 1); continue }
       f.x += f.vx * dt; f.y += f.vy * dt
       f.vx *= Math.exp(-4 * dt); f.vy *= Math.exp(-4 * dt)
+      // Sparks stay on the table (the goal pockets reach a little past each end);
+      // one that flies off it is dropped instead of drawing in the window margin.
+      if (f.y < table.T || f.y > table.B || f.x < table.L - 24 || f.x > table.R + 24) sparks.splice(i, 1)
     }
   }
 
