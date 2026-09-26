@@ -89,6 +89,10 @@ ShellRoot {
     }
     check("every entry path starts off the field", offOk)
     check("every entry path ends on its slot", landOk)
+    check("scoring is our own table, not a famous formation shooter's bee/butterfly/boss numbers",
+          Layouts.pointsFor("n", false) !== 50 && Layouts.pointsFor("r", false) !== 80 && Layouts.pointsFor("p", false) !== 150
+          && Layouts.pointsFor("n", false) < Layouts.pointsFor("r", false) && Layouts.pointsFor("r", false) < Layouts.pointsFor("p", false),
+          Layouts.pointsFor("n", false) + "/" + Layouts.pointsFor("r", false) + "/" + Layouts.pointsFor("p", false))
 
     // ---- a new game --------------------------------------------------------------
     g.seed = 1; g.noDives = true; g.newGame()
@@ -141,7 +145,7 @@ ShellRoot {
     shootAt(g, e)
     run(g, 0.2, function () { return e.state === "dead" })
     check("a shot destroys a node", e.state === "dead" && g.shots.length === 0, e.state)
-    check("a node in the lattice scores 50", g.score === before + 50, g.score - before)
+    check("a node in the lattice scores 40", g.score === before + 40, g.score - before)
 
     idx = find(g, function (e) { return e.kind === "p" })
     e = g.enemies[idx]; before = g.score
@@ -159,7 +163,7 @@ ShellRoot {
     before = g.score
     g.shots.push({ x: e.x, y: e.y + 8, src: "ship" })
     run(g, 0.1, function () { return e.state === "dead" })
-    check("a diver is worth double", e.state === "dead" && g.score === before + 100, g.score - before)
+    check("a diver is worth double", e.state === "dead" && g.score === before + 80, g.score - before)
 
     // ---- dives -----------------------------------------------------------------------
     var d1 = firstDive(7), d2 = firstDive(7)
@@ -240,14 +244,14 @@ ShellRoot {
     run(g, g.snapWindow + 0.5)
     g.killEnemy(g.enemies[slow.members[1]], true)
     g.killEnemy(g.enemies[slow.members[2]], true)
-    check("a slow clear scores the plain bonus", g.score === before + 150 + 300, g.score - before)
+    check("a slow clear scores the plain bonus", g.score === before + 120 + 300, g.score - before)
     check("a slow clear earns no drone", !g.droneL && !g.droneR)
     before = g.score
     g.killEnemy(g.enemies[fast.members[0]], true)
     run(g, 0.5)
     g.killEnemy(g.enemies[fast.members[1]], true)
     g.killEnemy(g.enemies[fast.members[2]], true)
-    check("a link snap doubles the bonus", g.score === before + 150 + 600, g.score - before)
+    check("a link snap doubles the bonus", g.score === before + 120 + 600, g.score - before)
     check("a link snap earns a wing drone", g.droneL && !g.droneR)
     var hotSeen = false
     fresh(g); settle(g)
@@ -304,6 +308,11 @@ ShellRoot {
     g.stage = 4; g.loadStage()
     b = g.bossList[0]
     check("stage 4 is a Monolith alone", g.bossList.length === 1 && g.enemies.length === 0 && b.hp === Paths.bossHp(1) && b.plates === 4)
+    // Balance fix: the bot never beat the first Monolith with 3 lives, so it is
+    // eased (fewer HP, a slower shield spin) while later ones keep the old curve.
+    check("the first Monolith is eased for a first-time player, later ones aren't",
+          Paths.bossHp(1) < 36 && Paths.bossSpin(1) < 1.25 && Paths.bossHp(2) === 60 && Paths.bossSpin(2) === 1.5,
+          Paths.bossHp(1) + "/" + Paths.bossSpin(1))
     b.angle = 0
     check("plates block, gaps don't",
           g.plateBlocks(b, b.x + 54, b.y) && !g.plateBlocks(b, b.x + 54 * Math.cos(Math.PI / 4), b.y + 54 * Math.sin(Math.PI / 4))
@@ -339,16 +348,43 @@ ShellRoot {
     run(g, g.clearTime + 0.3, function () { return g.stage === 5 })
     check("after the Monolith comes stage 5", g.stage === 5 && Layouts.stageName(5) === "Arrowheads", g.stage)
 
+    // Review fix: updateBoss used to drop spent escorts with
+    // `enemies = enemies.filter(...)`, reassigning the whole array inside a physics
+    // substep. It now splices dead ones out of the same array in place, so `enemies`
+    // itself is never reassigned mid-flight (only publish() replaces it, once a frame).
+    fresh(g)
+    g.stage = 4; g.loadStage()
+    g.shieldT = 999   // let escorts sail past the cannon instead of dying on it
+    var reassigns = 0
+    var onEnemiesChanged = function () { reassigns++ }
+    g.enemiesChanged.connect(onEnemiesChanged)
+    run(g, 20)
+    g.enemiesChanged.disconnect(onEnemiesChanged)
+    check("the escort pool is never reassigned mid-flight", reassigns === 0, reassigns)
+    check("spent escorts still get dropped, so the pool stays bounded", g.enemies.length <= 4, g.enemies.length)
+    g.shieldT = 0
+
     // ---- lives and game over ---------------------------------------------------------
     fresh(g)
-    g.addScore(20000)
-    check("an extra cannon every 20000", g.lives === 4 && g.nextExtra === 40000, g.lives)
+    g.addScore(25000)
+    check("an extra cannon every 25000", g.lives === 4 && g.nextExtra === 50000, g.lives)
     fresh(g)
     g.lives = 1
     g.killShip()
     run(g, 3)
     check("losing the last cannon ends the game", g.phase === "over" && g.lives === 0, g.phase)
     check("no firing after game over", !g.fire())
+
+    // House rule: the lives dots draw every life (the one in play included), not
+    // just the spares. fresh() leaves the cannon alive with 3 lives.
+    fresh(g); g.publish()
+    check("the life dots show every life, not just spares", g.livesView.count === 3 && g.lives === 3, g.livesView.count)
+
+    // House rule: GAME OVER reads "Score N  ·  Stage N[  ·  new high score!]".
+    g.phase = "over"; g.score = 1234; g.stage = 3; g.beatHigh = false
+    check("game over shows the score before the stage", g.overText.text.indexOf("Score 1234  ·  Stage 3") === 0, g.overText.text)
+    g.beatHigh = true
+    check("a beaten high score adds to the game-over line", g.overText.text.indexOf("new high score!") > 0, g.overText.text)
 
     // ---- pause and focus ---------------------------------------------------------------
     fresh(g); run(g, 1)
@@ -362,6 +398,27 @@ ShellRoot {
     g.lostFocus()
     check("losing focus pauses", g.phase === "paused", g.phase)
     check("losing focus forgets held keys", !g.leftHeld && !g.rightHeld && !g.fireHeld)
+
+    // House rule: while paused, P, Space and Enter all resume, and so does a click.
+    fresh(g); run(g, 1); g.pause()
+    check("Enter resumes from pause", g.keyDown(Qt.Key_Return) && g.phase === "play", g.phase)
+    g.pause()
+    check("Space resumes from pause", g.keyDown(Qt.Key_Space) && g.phase === "play", g.phase)
+    g.pause()
+    g.fieldClicked()
+    check("a click resumes from pause", g.phase === "play", g.phase)
+
+    // House rule: Enter (or a click) on GAME OVER starts a new game and lands on
+    // the ready screen, not straight into play; a click on ready starts play.
+    fresh(g); g.score = 500; g.phase = "over"
+    g.keyDown(Qt.Key_Return)
+    check("Enter on game over goes to ready, not play", g.phase === "ready" && g.score === 0, g.phase)
+    fresh(g); g.score = 500; g.phase = "over"
+    g.fieldClicked()
+    check("a click on game over also starts a new game", g.phase === "ready" && g.score === 0, g.phase)
+    g.newGame()
+    g.fieldClicked()
+    check("a click on the ready screen starts play", g.phase === "play", g.phase)
 
     // ---- drawing follows the rules -------------------------------------------------------
     fresh(g); settle(g)

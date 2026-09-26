@@ -50,6 +50,7 @@ FocusScope {
   property int bursts: 0                       // glint bursts this game
   property bool beatHigh: false
   property string banner: ""
+  property bool clearBanner: false             // true when banner was set by this clear (resolve())
   property real rngState: 1
 
   // The well, rows 0..total-1 from the top (the first `hidden` rows are above the
@@ -97,7 +98,7 @@ FocusScope {
   readonly property alias boardView: boardView
   readonly property alias activeView: activeView
 
-  function color(key, fallback) { return theme[key] || fallback }
+  function color(key, fallback) { return (theme && theme[key]) || fallback }
   function shapeColor(kind) {
     var s = Pieces.shape(kind)
     return s ? color(s.color, s.fallback) : "transparent"
@@ -249,14 +250,18 @@ FocusScope {
 
   // ---- locking and clearing -------------------------------------------------------------
   function lockPiece() {
-    var c = pieceCells(), above = true
+    // The board Repeater only draws the visible rows, so a cell that locks in a
+    // hidden row is invisible on screen even though it can still block later
+    // moves. Treat locking any cell in a hidden row as a top-out, not only a
+    // piece that locks entirely above the well.
+    var c = pieceCells(), hiddenLock = false
     for (var i = 0; i < c.length; i++) {
       board[idx(c[i].x, c[i].y)] = { k: c[i].k, g: c[i].g }
-      if (c[i].y >= hidden) above = false
+      if (c[i].y < hidden) hiddenLock = true
     }
     curKind = ""
     lockTimer = 0
-    if (above) { publishBoard(); gameOver(); return }   // locked entirely above the well
+    if (hiddenLock) { publishBoard(); gameOver(); return }   // locked into a hidden row
     resolve()
     publishBoard()
   }
@@ -307,9 +312,10 @@ FocusScope {
     clearing = list
     clearRows = full
     clearTimer = clearDelay
-    if (nb > 1) flash("Glint chain ×" + nb)
-    else if (nb === 1) flash("Glint burst")
-    else if (full.length >= 3) flash(full.length + " rows!")
+    clearBanner = false
+    if (nb > 1) { flash("Glint chain ×" + nb); clearBanner = true }
+    else if (nb === 1) { flash("Glint burst"); clearBanner = true }
+    else if (full.length >= 3) { flash(full.length + " rows!"); clearBanner = true }
   }
 
   // The flash is over: empty the burst cells, drop the rows above each full row,
@@ -332,7 +338,14 @@ FocusScope {
     clearRows = []
     clearTimer = 0
     var want = 1 + Math.floor(lines / Pieces.LINES_PER_LEVEL)
-    if (want > level) { level = want; flash("Level " + level) }
+    if (want > level) {
+      level = want
+      // A level-up can land on the same clear as a burst/chain/rows banner; combine
+      // them instead of one replacing the other.
+      if (clearBanner) { banner = banner + "  Level " + level; bannerTimer.restart() }
+      else flash("Level " + level)
+      clearBanner = false
+    }
     spawnNext()
     publishBoard()
   }
@@ -368,7 +381,7 @@ FocusScope {
     phase = "over"
     curKind = ""
     banner = ""
-    downHeld = false
+    leftHeld = false; rightHeld = false; downHeld = false; dasDir = 0
     publish()
   }
   function pause() { if (phase === "play") phase = "paused" }
@@ -447,10 +460,10 @@ FocusScope {
   function pressLeft() { leftHeld = true; dasDir = -1; dasTimer = dasDelay; move(-1, 0) }
   function pressRight() { rightHeld = true; dasDir = 1; dasTimer = dasDelay; move(1, 0) }
 
-  Keys.onPressed: function (e) {
-    // Key repeat is ours (dasDelay/dasRepeat in step), not the keyboard's.
-    if (e.isAutoRepeat) { e.accepted = true; return }
-    switch (e.key) {
+  // Handles one key; returns true when it did something (also used by the test
+  // to drive input without a real key event).
+  function handleKey(key) {
+    switch (key) {
     case Qt.Key_Left: case Qt.Key_A: pressLeft(); break
     case Qt.Key_Right: case Qt.Key_D: pressRight(); break
     case Qt.Key_Down: case Qt.Key_S: downHeld = true; softDrop(); break
@@ -465,13 +478,24 @@ FocusScope {
     case Qt.Key_P: togglePause(); break
     case Qt.Key_Return: case Qt.Key_Enter:
       if (phase === "ready") start()
-      else if (phase === "over") { newGame(); start() }
+      else if (phase === "over") newGame()
       else if (phase === "paused") resume()
       break
     case Qt.Key_Escape: quitRequested(); break
-    default: return
+    default: return false
     }
-    e.accepted = true
+    return true
+  }
+  Keys.onPressed: function (e) {
+    // Key repeat is ours (dasDelay/dasRepeat in step), not the keyboard's.
+    if (e.isAutoRepeat) { e.accepted = true; return }
+    if (handleKey(e.key)) e.accepted = true
+  }
+  // What a click on the field does; same landing spots as Enter/Space.
+  function clicked() {
+    if (phase === "ready") start()
+    else if (phase === "over") newGame()
+    else if (phase === "paused") resume()
   }
   Keys.onReleased: function (e) {
     if (e.isAutoRepeat) return
@@ -586,7 +610,7 @@ FocusScope {
         font.pixelSize: 30; font.bold: true; font.family: "monospace"; font.letterSpacing: 3
       }
       Stat { label: "SCORE"; value: "" + game.score }
-      Stat { label: "HIGH"; value: "" + game.highScore; tint: game.beatHigh ? game.color("yellow", "#e0af68") : game.color("foreground", "#a9b1d6") }
+      Stat { label: "HIGH"; value: "" + game.highScore; tint: game.beatHigh ? game.color("accent", "#7aa2f7") : game.color("foreground", "#a9b1d6") }
       Column {
         spacing: 6
         Text { text: "HOLD  (C)"; color: game.color("foreground", "#a9b1d6"); font.pixelSize: 12; font.family: "monospace"; font.letterSpacing: 2; opacity: 0.8 }
@@ -600,7 +624,7 @@ FocusScope {
       Text {
         width: 200
         text: game.banner
-        color: game.color("yellow", "#e0af68")
+        color: game.color("bright_foreground", "#c0caf5")
         font.pixelSize: 18; font.bold: true; font.family: "monospace"
         wrapMode: Text.WordWrap
       }
@@ -608,9 +632,9 @@ FocusScope {
     Text {
       x: 36; y: game.fieldH - 132
       width: 200
-      text: "← →  move\n↑ / X  turn   Z  back\n↓  soft drop\nSpace  hard drop\nC  hold   P  pause"
+      text: "← → / A D  move\n↑ W X  turn   Z  back\n↓ S  soft drop\nSpace  hard drop\nC  hold   P  pause"
       color: game.color("foreground", "#a9b1d6")
-      opacity: 0.6
+      opacity: 0.85
       font.pixelSize: 13; font.family: "monospace"
       lineHeight: 1.2
     }
@@ -709,7 +733,7 @@ FocusScope {
       color: game.color("dark_background", "#16161e")
       opacity: 0.92
       border.width: 1
-      border.color: game.color("accent", "#7aa2f7")
+      border.color: game.color("lighter_background", "#24283b")
     }
     Column {
       id: messages
@@ -728,8 +752,8 @@ FocusScope {
       Text {
         anchors.horizontalCenter: parent.horizontalCenter
         visible: text !== ""
-        text: game.phase === "over" ? "Score " + game.score + (game.beatHigh ? "\nnew high score!" : "") + "\nEnter to play again\nEsc to quit"
-            : game.phase === "paused" ? "P to resume\nEsc to quit"
+        text: game.phase === "over" ? "Score " + game.score + (game.beatHigh ? "  ·  new high score!" : "") + "\nEnter to play again  ·  Esc to quit"
+            : game.phase === "paused" ? "P or Space to resume  ·  Esc to quit"
             : game.phase === "ready" ? "Fill a row to clear it.\nGlints ◆ in a cleared row\nburst their neighbours.\n\nSpace or Enter to start" : ""
         horizontalAlignment: Text.AlignHCenter
         color: game.color("foreground", "#a9b1d6")
@@ -740,12 +764,7 @@ FocusScope {
 
     MouseArea {
       anchors.fill: parent
-      onClicked: {
-        game.forceActiveFocus()
-        if (game.phase === "ready") game.start()
-        else if (game.phase === "over") { game.newGame(); game.start() }
-        else if (game.phase === "paused") game.resume()
-      }
+      onClicked: { game.forceActiveFocus(); game.clicked() }
     }
   }
 }

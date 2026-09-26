@@ -59,19 +59,32 @@ function targetFor(name, bug, hero, mode, w, h) {
   case "Race": return { c: hero.c + RACE_AHEAD * hero.fx, r: hero.r + RACE_AHEAD * hero.fy }
   case "Leak": return null
   case "Loop":
-    var dc = bug.c - hero.c, dr = bug.r - hero.r
+    // Bug fix: wrap the column delta, so Byte just across the tunnel seam still
+    // reads as close instead of clear across the board.
+    var dc = wrapDelta(bug.c - hero.c, w), dr = bug.r - hero.r
     return dc * dc + dr * dr <= LOOP_RANGE * LOOP_RANGE ? { c: hero.c, r: hero.r } : home
   }
   return home
 }
 
+// The shorter of a column delta and its wrap-around image, so a choice made
+// near the tunnel seam sees the true distance across it (bug fix: it used to
+// measure only the straight way, so a bug just across the seam looked far off).
+function wrapDelta(dc, w) {
+  if (!w) return dc
+  if (dc > w / 2) return dc - w
+  if (dc < -w / 2) return dc + w
+  return dc
+}
+
 // Which of `options` (DIRS indexes) brings a bug at `from` closest to `target`,
-// by straight-line distance from the next tile. Ties go to the earliest in DIRS.
-function chooseDir(options, from, target) {
+// by straight-line distance from the next tile, wrapped across the tunnel when
+// `w` (the board width) is given. Ties go to the earliest in DIRS.
+function chooseDir(options, from, target, w) {
   var best = -1, bestD = Infinity
   for (var i = 0; i < options.length; i++) {
     var d = DIRS[options[i]]
-    var nc = from.c + d.dx - target.c, nr = from.r + d.dy - target.r
+    var nc = wrapDelta(from.c + d.dx - target.c, w), nr = from.r + d.dy - target.r
     var dist = nc * nc + nr * nr
     if (dist < bestD || (dist === bestD && options[i] < best)) { bestD = dist; best = options[i] }
   }
@@ -85,9 +98,10 @@ function dirIndex(dx, dy) {
   return -1
 }
 
-// Squashing patched bugs with one chip: 200, 400, 800, 1600.
-function squashPoints(chain) { return 200 * Math.pow(2, Math.min(chain, 3)) }
-var ALL_FOUR_BONUS = 1000  // all four squashed on one chip: a full debug
+// Squashing patched bugs with one chip: doubles each squash, our own tiers
+// (150, 300, 600, 1200) rather than the famous original's 200/400/800/1600.
+function squashPoints(chain) { return 150 * Math.pow(2, Math.min(chain, 3)) }
+var ALL_FOUR_BONUS = 900  // all four squashed on one chip: a full debug
 
 // How long a chip keeps the bugs patched; it shrinks every level.
 function patchSeconds(level) { return Math.max(1.5, 7 - (level - 1) * 0.9) }
@@ -96,9 +110,9 @@ function patchSeconds(level) { return Math.max(1.5, 7 - (level - 1) * 0.9) }
 function releaseSeconds(def, level) { return def.release * Math.max(0.35, 1 - 0.12 * (level - 1)) }
 
 // Scatter / chase countdowns (seconds). Even entries are scatter; after the list
-// the bugs chase for good.
+// the bugs chase for good. Our own cadence, not the famous original's 7/20 timing.
 function schedule(level) {
-  if (level <= 1) return [7, 20, 7, 20, 5, 20, 5]
-  if (level <= 4) return [7, 20, 7, 20, 5, 60, 1]
-  return [5, 20, 5, 20, 3, 80, 1]
+  if (level <= 1) return [6, 24, 6, 24, 4, 24, 4]
+  if (level <= 4) return [6, 24, 6, 24, 4, 70, 1]
+  return [4, 22, 4, 22, 3, 90, 1]
 }

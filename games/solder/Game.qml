@@ -82,6 +82,7 @@ FocusScope {
   property int dragFrom: -1
   property real levelT: 0
   property real clearT: 0
+  property bool bannerWasRunning: false      // so pause()/resume() can stop and restart bannerTimer
 
   // The board, as plain arrays mutated in place (publish() copies them into the
   // cells model once per frame).
@@ -97,6 +98,12 @@ FocusScope {
   property var rotCells: []
 
   function color(key, fallback) { return theme[key] || fallback }
+  // A theme color at low alpha for the "picked up" fill: a fixed white wash reads
+  // as nearly invisible against a light theme's own light background.
+  function selectedFill() {
+    var t = Qt.color(color("accent", "#7aa2f7"))   // theme colors are strings, not color values
+    return Qt.rgba(t.r, t.g, t.b, 0.22)
+  }
   function kindColor(k) {
     if (k >= 0 && k < Levels.KINDS.length) return color(Levels.KINDS[k].color, Levels.KINDS[k].fallback)
     if (k === Board.CORE) return color("accent", "#7aa2f7")
@@ -112,6 +119,11 @@ FocusScope {
   ListModel { id: cells }                    // one entry per cell: { k, s, ox, oy, pop }
   readonly property alias cellModel: cells
   readonly property alias tileView: tileView
+  readonly property alias bannerTimer: bannerTimer
+  readonly property alias messageBackdrop: messageBackdrop
+  readonly property alias subtitleText: subtitleText
+  readonly property alias comboLabel: comboLabel
+  readonly property alias goalView: goalView
 
   function resetAnim() {
     var z = []
@@ -361,6 +373,11 @@ FocusScope {
     var keep = {}
     for (j = 0; j < made.length; j++) keep[made[j].at] = true
     var cleared = [], gc = goalCounts.slice()
+    // The cell a special is built on stays on the board (it isn't cleared), but it
+    // was still part of the matched line, so it counts toward that kind's salvage
+    // goal same as the cells that did clear.
+    for (j = 0; j < made.length; j++)
+      for (var t2 = 0; t2 < levelInfo.goals.length; t2++) if (levelInfo.goals[t2].kind === made[j].kind) gc[t2]++
     for (j = 0; j < hit.length; j++) {
       var i = hit[j]
       if (keep[i]) continue
@@ -585,8 +602,19 @@ FocusScope {
   Timer { id: bannerTimer; interval: 1800; onTriggered: game.banner = "" }
 
   // ---- input ------------------------------------------------------------------------
-  function pause() { if (phase === "play") { phase = "paused"; dragging = false } }
-  function resume() { if (phase === "paused") { phase = "play"; idleTime = 0 } }
+  // A level banner fades on its own timer (the one Timer the rules allow); stop
+  // it while paused so it can't fade out mid-pause, and pick it back up on resume.
+  function pause() {
+    if (phase !== "play") return
+    phase = "paused"; dragging = false
+    bannerWasRunning = bannerTimer.running
+    if (bannerWasRunning) bannerTimer.stop()
+  }
+  function resume() {
+    if (phase !== "paused") return
+    phase = "play"; idleTime = 0
+    if (bannerWasRunning) { bannerWasRunning = false; bannerTimer.restart() }
+  }
   function togglePause() { if (phase === "play") pause(); else if (phase === "paused") resume() }
 
   // Arrows: with a part picked up, swap it that way; otherwise move the cursor
@@ -612,9 +640,10 @@ FocusScope {
     clickCell(cursor)
   }
 
-  // A click (or Space) on a cell.
+  // A click (or Space) on a cell. Ignored mid-cascade: the board is still
+  // resolving and a cell's part can change kind before it settles.
   function clickCell(i) {
-    if (phase !== "play") return
+    if (phase !== "play" || busy !== "idle") return
     clearHint()
     cursor = i
     if (selected === i) { selected = -1; return }
@@ -785,7 +814,7 @@ FocusScope {
         visible: game.selected >= 0
         x: game.colOf(game.selected) * game.cell + 1; y: game.rowOf(game.selected) * game.cell + 1
         width: game.cell - 2; height: game.cell - 2; radius: 12
-        color: Qt.rgba(1, 1, 1, 0.06)
+        color: game.selectedFill()
         border.width: 3
         border.color: game.color("accent", "#7aa2f7")
       }
@@ -801,12 +830,13 @@ FocusScope {
       }
 
       Text {
+        id: comboLabel
         z: 4
         anchors.horizontalCenter: parent.horizontalCenter
         y: 18
         visible: game.comboText !== "" && game.phase === "play"
         text: game.comboText
-        color: game.color("yellow", "#e0af68")
+        color: game.color("bright_foreground", "#c0caf5")
         style: Text.Outline; styleColor: game.color("dark_background", "#13141c")
         font.pixelSize: 30; font.bold: true; font.family: "monospace"
         opacity: Math.min(1, game.comboT * 2)
@@ -882,19 +912,23 @@ FocusScope {
 
       Text { text: "SALVAGE"; visible: game.levelInfo.goals.length > 0; color: game.color("foreground", "#a9b1d6"); font.pixelSize: 14; font.family: "monospace" }
       Repeater {
+        id: goalView
         model: game.levelInfo.goals.length
         delegate: Row {
           required property int index
+          readonly property alias label: goalLabel
           spacing: 10
           Item {
             width: 29; height: 29
             TileArt { host: game; kind: game.levelInfo.goals[index].kind; scale: 0.5; transformOrigin: Item.TopLeft }
           }
           Text {
+            id: goalLabel
             anchors.verticalCenter: parent.verticalCenter
             readonly property int got: Math.min(game.goalCounts[index] || 0, game.levelInfo.goals[index].n)
-            text: got + " / " + game.levelInfo.goals[index].n
-            color: got >= game.levelInfo.goals[index].n ? game.color("green", "#9ece6a") : game.color("bright_foreground", "#c0caf5")
+            readonly property bool met: got >= game.levelInfo.goals[index].n
+            text: (met ? "✓ " : "") + got + " / " + game.levelInfo.goals[index].n
+            color: game.color("bright_foreground", "#c0caf5")
             font.pixelSize: 18; font.bold: true; font.family: "monospace"
           }
         }
@@ -954,13 +988,14 @@ FocusScope {
 
     // Messages over the board, with a backdrop for pause and game over.
     Rectangle {
+      id: messageBackdrop
       anchors.centerIn: messages
       width: messages.width + 48; height: messages.height + 32
       radius: 8
       visible: messages.visible && (game.phase !== "play")
       z: 6
       color: game.color("dark_background", "#13141c")
-      opacity: 0.97
+      opacity: 0.92
       border.width: 1
       border.color: game.color("lighter_background", "#24283b")
     }
@@ -984,11 +1019,12 @@ FocusScope {
         font.pixelSize: game.phase === "play" ? 26 : 40; font.bold: true; font.family: "monospace"
       }
       Text {
+        id: subtitleText
         anchors.horizontalCenter: parent.horizontalCenter
         visible: text !== ""
-        text: game.phase === "over" ? "Score " + game.score + (game.beatHigh ? "  ·  new high score!" : "") + "\nlevel " + game.level + " · Enter to play again · Esc to quit"
+        text: game.phase === "over" ? "Score " + game.score + "  ·  Level " + game.level + (game.beatHigh ? "  ·  new high score!" : "") + "\nEnter to play again  ·  Esc to quit"
             : game.phase === "paused" ? "P or Space to resume  ·  Esc to quit"
-            : game.phase === "ready" ? "Line up 3+ parts to solder them off.\nSwap: drag, click two, or Space + arrows\nMeet the goals before the moves run out.\nSpace or click to start"
+            : game.phase === "ready" ? "Space or click to start  ·  arrows/WASD move  ·  Space pick up/swap  ·  P pause\nR reroute a 2×2 block with flux  ·  H hint  ·  meet the goals before the moves run out"
             : ""
         horizontalAlignment: Text.AlignHCenter
         color: game.color("foreground", "#a9b1d6")

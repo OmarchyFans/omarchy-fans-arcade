@@ -1,0 +1,8 @@
+{
+  "id": "mma",
+  "title": "Super MMA Fighter",
+  "note": "built in",
+  "order": 60,
+  "genre": "MMA fighter",
+  "description": "A side-view MMA fighter with seven invented fighters: strike, clinch, take it down and hunt submissions over three rounds, vs a CPU ladder or a friend on one keyboard."
+}

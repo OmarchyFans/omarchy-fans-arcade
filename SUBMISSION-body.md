@@ -19,7 +19,17 @@ arcade
 Arcade is an Omarchy.Fans product written by ModPunk, MIT licensed. It is a bar chip with a small game menu.
 
 What it does:
-- It plays Brick Blitz, an original brick-breaker written for Arcade in pure QML/JS: five layouts, tough bricks, power-up capsules (wide, catch, laser, slow, multi-ball, extra ball, warp), and a high score saved in ~/.local/state/omarchy-arcade.
+- It plays nine original built-in games, written for Arcade in pure QML/JS. Each runs in its own Quickshell window and keeps a high score in ~/.local/state/omarchy-arcade:
+  - Brick Blitz: brick-breaker with power-ups
+  - Circuit Crawl: maze chase
+  - Lattice Siege: formation shooter
+  - Glintfall: falling blocks
+  - Solder Snap: match-three
+  - Super MMA Fighter: invented fighters whose stats are anonymous averages of public fight records
+  - Tetherwake: vector shooter
+  - Dockhop: lane crossing
+  - Surge Rink: air hockey
+- Every built-in game has its own name (checked against the catalog and the web) and its own characters, levels and look, and uses no real person. tests/run.sh fails the build on protected game names and on real fighters' names.
 - It launches Pac-Man, Galaga and Super Street Fighter II in MAME from the user's own ROM files. Before starting a game it runs `mame -verifyroms` and names the missing or wrong file in a notification.
 
 How it differs from Omacade and Omarchy Breakout:

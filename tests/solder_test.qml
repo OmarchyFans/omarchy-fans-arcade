@@ -280,6 +280,15 @@ ShellRoot {
     check("four in a row builds an H-bus where the part landed", g.specials[at(7, 2)] === "h" && g.kinds[at(7, 2)] === 5, g.specials[at(7, 2)])
     check("building a Bus scores its bonus", g.cascadeLog[0].points === 3 * 10 + Levels.SPECIAL_BONUS.h, g.cascadeLog[0].points)
 
+    // Level 1's salvage goal is kind 2. The four-in-a-row is kind 2 here too, so
+    // the cell the new Bus is built on (kept, not cleared) must still count.
+    fresh(g)
+    g.setBoard(rows([[7, 0, "2"], [7, 1, "2"], [7, 3, "2"], [6, 2, "2"]]))
+    g.trySwap(at(6, 2), at(7, 2))
+    stepUntil(g, function () { return g.busy === "clear" })
+    check("the cell a new special is built on still counts toward its salvage goal",
+          g.specials[at(7, 2)] === "h" && g.goalCounts[0] === 4, g.goalCounts[0])
+
     fresh(g)
     g.setBoard(rows([[7, 0, "5"], [7, 1, "5"], [7, 3, "5"], [7, 4, "5"], [6, 2, "5"]]))
     g.trySwap(at(6, 2), at(7, 2))
@@ -401,6 +410,19 @@ ShellRoot {
     check("clicking two neighbours swaps them", g.busy === "swap")
     settle(g)
 
+    // A click (or Space, which reaches clickCell through action()) is ignored
+    // while the board is mid-cascade: the cell under it can change kind before
+    // the board goes idle again.
+    fresh(g)
+    g.setBoard(rows([[5, 0, "5"], [6, 0, "5"], [7, 1, "5"], [4, 0, "4"], [7, 2, "4"]]))
+    g.trySwap(at(7, 1), at(7, 0))
+    check("mid-swap, a click selects nothing", (g.clickCell(at(3, 3)), g.selected === -1 && g.busy === "swap"))
+    stepUntil(g, function () { return g.busy === "clear" || g.busy === "fall" }, 2)
+    check("mid-cascade (falling/clearing), a click still selects nothing",
+          g.busy !== "idle" && (g.clickCell(at(3, 3)), g.selected === -1), g.busy)
+    settle(g, 5)
+    check("once idle again, clicking works as usual", (g.clickCell(at(3, 3)), g.selected === at(3, 3)), g.selected)
+
     // ---- hint ----------------------------------------------------------------------------------
     fresh(g)
     for (i = 0; i < 4.9 * 60; i++) g.step(1 / 60)
@@ -458,6 +480,29 @@ ShellRoot {
     g.lostFocus()
     check("losing focus pauses", g.phase === "paused", g.phase)
     check("losing focus forgets a drag", !g.dragging && g.dragFrom === -1)
+
+    // A level banner fades on its own timer; it must not keep counting down (and
+    // so fade) while the game is paused.
+    fresh(g)
+    g.flash("Testing")
+    check("flash starts the banner timer", g.bannerTimer.running)
+    g.pause()
+    check("pausing stops the banner timer", !g.bannerTimer.running)
+    g.resume()
+    check("resuming restarts the banner timer", g.bannerTimer.running)
+    g.bannerTimer.stop()
+    g.pause(); g.resume()
+    check("resuming leaves an already-stopped banner timer alone", !g.bannerTimer.running)
+
+    // The "picked up" tile fill must come from the theme, not a fixed white wash
+    // that all but disappears against a light theme's own light background.
+    g.theme = { accent: "#7aa2f7" }
+    var darkFill = g.selectedFill()
+    g.theme = { accent: "#3b5bdb" }
+    var lightFill = g.selectedFill()
+    check("the selected-part fill follows the theme's accent color, not a fixed white",
+          darkFill.r !== lightFill.r && darkFill.a > 0 && darkFill.a < 0.5, JSON.stringify([darkFill, lightFill]))
+    g.theme = {}
 
     // ---- drawing follows the board -------------------------------------------------------------
     fresh(g)
@@ -521,5 +566,43 @@ ShellRoot {
     check("new game resets everything", g.level === 1 && g.score === 0 && g.levelScore === 0 && g.moves === Levels.level(1).moves
           && g.phase === "ready" && g.charges === 1 && g.fluxMeter === 0 && g.shuffles === 0 && g.busy === "idle"
           && g.selected === -1 && g.goalCounts.length === 1 && g.goalCounts[0] === 0 && g.friedLeft === 0)
+
+    // ---- on-screen text and color match the house conventions --------------------------------------
+    fresh(g)
+    g.score = 240; g.level = 3; g.beatHigh = false
+    g.gameOver()
+    check("game-over text reads Score N  ·  Level N with double-spaced dots, no lone 'level N' line",
+          g.subtitleText.text === "Score 240  ·  Level 3\nEnter to play again  ·  Esc to quit", g.subtitleText.text)
+    g.beatHigh = true
+    check("a new high score is appended before the line break",
+          g.subtitleText.text === "Score 240  ·  Level 3  ·  new high score!\nEnter to play again  ·  Esc to quit", g.subtitleText.text)
+
+    g.newGame()
+    check("the ready screen names start, move keys, pause and this game's own controls",
+          g.subtitleText.text.indexOf("Space or click to start") === 0
+          && g.subtitleText.text.indexOf("arrows/WASD move") >= 0
+          && g.subtitleText.text.indexOf("P pause") >= 0
+          && g.subtitleText.text.indexOf("R reroute") >= 0
+          && g.subtitleText.text.indexOf("H hint") >= 0, g.subtitleText.text)
+
+    check("the message backdrop matches the house opacity", Math.abs(g.messageBackdrop.opacity - 0.92) < 1e-6, g.messageBackdrop.opacity)
+
+    g.theme = { bright_foreground: "#c0caf5", yellow: "#e0af68", dark_background: "#13141c" }
+    check("the cascade combo text is a theme text color, not the low-contrast yellow hue",
+          Qt.colorEqual(g.comboLabel.color, g.color("bright_foreground", "#c0caf5"))
+          && !Qt.colorEqual(g.comboLabel.color, g.color("yellow", "#e0af68")), g.comboLabel.color)
+    g.theme = {}
+
+    fresh(g)
+    g.theme = { green: "#9ece6a", bright_foreground: "#c0caf5" }
+    var goalN = g.levelInfo.goals[0].n
+    g.goalCounts = [0]
+    var goalLabel = g.goalView.itemAt(0).label
+    check("an unmet salvage goal shows plain counts with no check mark",
+          goalLabel.text === "0 / " + goalN && !Qt.colorEqual(goalLabel.color, g.color("green", "#9ece6a")), goalLabel.text)
+    g.goalCounts = [goalN]
+    check("a met salvage goal gets a check-mark prefix, not a low-contrast green hue",
+          goalLabel.text.indexOf("✓ ") === 0 && Qt.colorEqual(goalLabel.color, g.color("bright_foreground", "#c0caf5")), goalLabel.text)
+    g.theme = {}
   }
 }

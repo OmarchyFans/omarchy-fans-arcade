@@ -37,6 +37,24 @@ ShellRoot {
   }
   // A fresh level-1 rally with no random capsules.
   function fresh(g) { g.newGame(); g.dropChance = 0; g.launch() }
+  // The sequence of capsule types (or "none") maybeDrop() picks for a given
+  // seed, called with a fresh capsule slot each time (maybeDrop only drops
+  // when none is already falling).
+  function dropsFor(g, sd) {
+    g.seed = sd; g.newGame(); g.dropChance = 0.5
+    var seq = []
+    for (var k = 0; k < 12; k++) {
+      g.capsules = []
+      g.maybeDrop(400, 200)
+      seq.push(g.capsules.length ? g.capsules[0].type : "none")
+    }
+    return seq.join(",")
+  }
+  function countDrops(seq) {
+    var parts = seq.split(","), n = 0
+    for (var i = 0; i < parts.length; i++) if (parts[i] !== "none") n++
+    return n
+  }
 
   FloatingWindow {
     implicitWidth: 800; implicitHeight: 600
@@ -211,17 +229,32 @@ ShellRoot {
     g.applyPowerUp("wide")
     check("a new mode replaces catch", g.paddleMode === "wide", g.paddleMode)
 
-    // A pause holds a caught ball's release countdown; resuming restarts it.
+    // The release countdown is a number decremented in step(dt); a pause
+    // freezes it (step() never runs while paused) instead of restarting it.
     fresh(g)
     g.applyPowerUp("catch")
     g.paddleX = 300
     put(ball(g), 300 + g.paddleW / 2, g.paddleY - g.ballR - 3, 0, 300)
     run(g, 0.1, function () { return ball(g).stuck })
-    check("catching starts the release countdown", ball(g).stuck && g.catchCountdown)
+    check("catching starts the release countdown", ball(g).stuck && g.catchCountdown && Math.abs(g.catchLeft - 3) < 0.01, g.catchLeft)
     g.togglePause()
-    check("a pause stops the countdown", g.phase === "paused" && !g.catchCountdown)
+    var heldCatch = g.catchLeft
+    for (var pz = 0; pz < 240; pz++) g.step(1 / 240)   // a full second of steps while paused
+    check("a pause freezes the release countdown", g.phase === "paused" && g.catchLeft === heldCatch, g.catchLeft)
     g.togglePause()
-    check("resuming restarts the countdown", g.phase === "play" && g.catchCountdown)
+    run(g, 0.5)
+    check("resuming counts down again, not restarting", g.phase === "play" && g.catchLeft < heldCatch && g.catchLeft > 0, g.catchLeft)
+
+    // A caught ball that's never let go releases itself after 3 s.
+    fresh(g)
+    g.applyPowerUp("catch")
+    g.paddleX = 300
+    put(ball(g), 300 + g.paddleW / 2, g.paddleY - g.ballR - 3, 0, 300)
+    run(g, 0.1, function () { return ball(g).stuck })
+    run(g, 2.85)
+    check("a caught ball is still held just before 3 s", ball(g).stuck && g.catchCountdown, g.catchLeft)
+    run(g, 0.2)
+    check("a caught ball releases itself after 3 s", !ball(g).stuck && ball(g).vy < 0 && !g.catchCountdown, ball(g).stuck)
 
     // Losing focus pauses and forgets held keys.
     fresh(g)
@@ -239,9 +272,32 @@ ShellRoot {
     check("laser needs a moment between shots", !g.fireLaser() && g.bolts.length === 2)
     run(g, 0.6, function () { return g.bolts.length === 0 })
     check("laser bolts break bricks", dead(m) >= deadBefore + 2, dead(m) - deadBefore)
-    g.laserReady = true
+    g.laserCooldown = 0
     g.action(true)
     check("Space fires the laser, not pause", g.phase === "play" && g.bolts.length === 2, g.phase + " " + g.bolts.length)
+
+    // The laser cooldown is a number decremented in step(dt): ready again after
+    // 0.28 s, and it freezes during a pause instead of firing early on resume.
+    fresh(g)
+    g.applyPowerUp("laser")
+    g.paddleX = 300
+    put(ball(g), 60, 300, 0, -40)
+    check("firing starts the cooldown", g.fireLaser() && !g.laserReady && g.laserCooldown > 0, g.laserCooldown)
+    run(g, 0.2)
+    check("the laser isn't ready before 0.28 s", !g.laserReady && !g.fireLaser(), g.laserCooldown)
+    run(g, 0.1)
+    check("the laser is ready again after 0.28 s", g.laserReady && g.fireLaser(), g.laserCooldown)
+
+    fresh(g)
+    g.applyPowerUp("laser")
+    g.paddleX = 300
+    put(ball(g), 60, 300, 0, -40)
+    g.fireLaser()
+    g.togglePause()
+    var heldLaser = g.laserCooldown
+    for (var lz = 0; lz < 240; lz++) g.step(1 / 240)
+    check("a pause freezes the laser cooldown", g.phase === "paused" && g.laserCooldown === heldLaser, g.laserCooldown)
+    g.togglePause()
 
     g.level = 4; g.loadLevel(); g.launch(); g.dropChance = 0
     g.applyPowerUp("laser")
@@ -295,6 +351,34 @@ ShellRoot {
     check("Space in play pauses", g.phase === "paused", g.phase)
     g.action(true)
 
+    // ---- backdrop: covers the title on the very first serve, not every respawn ----
+    g.newGame(); g.dropChance = 0
+    check("backdrop hidden while the opening level banner still shows", g.phase === "serve" && g.banner !== "" && !g.messageBackdrop.visible, g.messageBackdrop.visible)
+    g.banner = ""
+    check("backdrop shows behind the title on the first serve", g.score === 0 && g.messageBackdrop.visible)
+    g.launch()
+    g.togglePause()
+    check("backdrop still shows behind PAUSED", g.phase === "paused" && g.messageBackdrop.visible)
+    g.togglePause()
+    i = lastAliveIn(m); bk = m.get(i)
+    put(ball(g), bk.bx + g.brickW / 2, bk.by + g.brickH + g.ballR + 2, 0, -300)
+    run(g, 0.2, function () { return !m.get(i).alive })
+    g.paddleX = 0
+    put(ball(g), 700, g.fieldH - 5, 0, 400)
+    run(g, 0.5)
+    g.banner = ""
+    check("backdrop hidden on a respawn once the score has moved", g.phase === "serve" && g.score > 0 && !g.messageBackdrop.visible, g.messageBackdrop.visible)
+    g.lives = 1
+    g.launch()
+    g.paddleX = 0
+    put(ball(g), 700, g.fieldH - 5, 0, 400)
+    run(g, 0.5)
+    check("backdrop shows behind GAME OVER", g.phase === "over" && g.messageBackdrop.visible)
+
+    // ---- capsule ink: readable label on both light and dark capsule hues ------
+    check("inkOn puts dark ink on a light capsule color", g.inkOn("#e0af68") === "#13141c", g.inkOn("#e0af68"))
+    check("inkOn puts light ink on a dark capsule color", g.inkOn("#1a1a2e") === "#f5f5f5", g.inkOn("#1a1a2e"))
+
     // ---- drawing follows the physics (a frozen drawing passed every rule above) ----
     fresh(g)
     put(ball(g), 222, 333, 0, -100)
@@ -303,10 +387,36 @@ ShellRoot {
     var bv = g.ballView.itemAt(0), cv = g.capsuleView.itemAt(0)
     check("the drawn ball is where the ball is", !!bv && Math.abs(bv.x - (222 - g.ballR)) < 0.01, bv ? bv.x : "no item")
     check("the drawn capsule is where the capsule is", !!cv && Math.abs(cv.y - (200 - g.capsuleH / 2)) < 0.01, cv ? cv.y : "no item")
+    // theme is empty here, so "slow" falls back to yellow (#e0af68, light) -> dark ink.
+    var lbl = null
+    for (var q = 0; cv && q < cv.children.length; q++) if (cv.children[q].text !== undefined) lbl = cv.children[q]
+    check("the capsule label draws dark ink on a yellow capsule", !!lbl && Qt.colorEqual(lbl.color, "#13141c"), lbl ? lbl.color : "no label")
     ball(g).x = 444; g.capsules[0].y = 250
     g.publish()
     check("the drawn ball moves when the ball does", Math.abs(g.ballView.itemAt(0).x - (444 - g.ballR)) < 0.01, g.ballView.itemAt(0).x)
     check("the drawn capsule falls when the capsule does", Math.abs(g.capsuleView.itemAt(0).y - 250) < 0.01, g.capsuleView.itemAt(0).y)
+
+    // ---- seeded randomness: the serve angle and capsule drops are reproducible ----
+    g.seed = 5; g.newGame(); g.dropChance = 0; g.launch()
+    var serveVx1 = ball(g).vx
+    g.seed = 5; g.newGame(); g.dropChance = 0; g.launch()
+    var serveVx2 = ball(g).vx
+    check("the same seed serves at the same angle", serveVx1 === serveVx2, serveVx1 + " vs " + serveVx2)
+    var diffSeedServe = false
+    for (var sd = 6; sd < 12 && !diffSeedServe; sd++) {
+      g.seed = sd; g.newGame(); g.dropChance = 0; g.launch()
+      if (ball(g).vx !== serveVx1) diffSeedServe = true
+    }
+    check("a different seed serves at a different angle", diffSeedServe)
+
+    var seqA = dropsFor(g, 9), seqB = dropsFor(g, 9)
+    check("the same seed drops the same sequence of capsules", seqA === seqB, seqA)
+    check("that seed's sequence includes at least one drop", countDrops(seqA) > 0, seqA)
+    var diffSeedDrop = false
+    for (var sd2 = 10; sd2 < 16 && !diffSeedDrop; sd2++) {
+      if (dropsFor(g, sd2) !== seqA) diffSeedDrop = true
+    }
+    check("a different seed drops a different sequence of capsules", diffSeedDrop)
 
     // ---- game over and high score --------------------------------------------
     fresh(g)

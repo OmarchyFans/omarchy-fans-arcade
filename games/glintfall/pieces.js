@@ -15,6 +15,9 @@ var HIDDEN = 2         // rows above the well where pieces appear
 var TOTAL = ROWS + HIDDEN
 
 // color is a theme key; fallback is used when the theme has no such key.
+// The theme only has 8 vivid keys (accent, red, orange, yellow, green, cyan, blue,
+// magenta) for 10 shapes, so two pairs must still share; every other shape gets
+// its own key so only crook/pip (yellow) and zig/flag (red) look alike.
 var SHAPES = [
   { id: "hook",   name: "Hook",   color: "orange",  fallback: "#ff9e64", rows: ["#.", "##"] },
   { id: "pip",    name: "Pip",    color: "yellow",  fallback: "#e0af68", rows: ["...", "###", "..."] },
@@ -23,9 +26,9 @@ var SHAPES = [
   { id: "stair",  name: "Stair",  color: "blue",    fallback: "#7aa2f7", rows: ["#..", "##.", ".##"] },
   { id: "flag",   name: "Flag",   color: "red",     fallback: "#f7768e", rows: ["##.", "##.", "#.."] },
   { id: "anchor", name: "Anchor", color: "cyan",    fallback: "#7dcfff", rows: ["###", ".#.", ".#."] },
-  { id: "branch", name: "Branch", color: "orange",  fallback: "#ff9e64", rows: ["....", "####", ".#..", "...."] },
-  { id: "crook",  name: "Crook",  color: "magenta", fallback: "#bb9af7", rows: ["....", "####", "#...", "...."] },
-  { id: "zig",    name: "Zig",    color: "green",   fallback: "#9ece6a", rows: ["....", "##..", ".###", "...."] }
+  { id: "branch", name: "Branch", color: "accent",  fallback: "#c0caf5", rows: ["....", "####", ".#..", "...."] },
+  { id: "crook",  name: "Crook",  color: "yellow",  fallback: "#e0af68", rows: ["....", "####", "#...", "...."] },
+  { id: "zig",    name: "Zig",    color: "red",     fallback: "#f7768e", rows: ["....", "##..", ".###", "...."] }
 ]
 
 // Kicks: when a turn collides, try these offsets in order ([dx, dy], dy < 0 is
@@ -86,7 +89,10 @@ var BURST_EACH = 50
 var LINES_PER_LEVEL = 8
 function fallInterval(level) { return Math.max(0.06, 0.8 * Math.pow(0.84, level - 1)) }
 // Glints get rarer as the levels climb, so the helper thins out as the speed rises.
-function glintChance(level) { return Math.max(0.2, 0.4 - 0.025 * (level - 1)) }
+// Level 1 used to glint 40% of pieces, and a 3x3 burst clears so much of the board
+// that early levels barely challenged anyone; started lower (18%) and thins out more
+// gently so bursts stay a mid-game tool rather than a level-1 crutch.
+function glintChance(level) { return Math.max(0.1, 0.18 - 0.015 * (level - 1)) }
 
 // mulberry32: a tiny seeded PRNG. rand(state) -> { v: [0, 1), s: next state }.
 function rand(state) {

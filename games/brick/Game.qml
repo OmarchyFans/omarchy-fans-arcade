@@ -19,6 +19,9 @@ FocusScope {
   // Colors come from the host (the active Omarchy theme, or a fallback).
   property var theme: ({})
   property int highScore: 0
+  property int seed: 1                         // tests set it; the host sets autoSeed
+  property bool autoSeed: false                // true: every new game seeds from the clock
+  property int rngState: 1
   signal quitRequested()
   signal newHighScore(int score)
 
@@ -59,7 +62,9 @@ FocusScope {
   property var balls: []                       // { x, y, vx, vy, stuck, offset, speed }
   property var capsules: []                    // { x, y, type }
   property var bolts: []                       // { x, y }
-  property bool laserReady: true
+  property real laserCooldown: 0               // seconds until the laser can fire again
+  readonly property bool laserReady: laserCooldown <= 0
+  property real catchLeft: 0                   // seconds until a caught ball releases itself
   property bool leftHeld: false
   property bool rightHeld: false
   property real mouseTarget: -1                // paddle x the mouse asked for, -1 = keyboard
@@ -67,7 +72,18 @@ FocusScope {
   property string banner: ""                   // short message over the field
   property bool beatHigh: false                // this game went past the old high score
 
+  // mulberry32: the only randomness in the rules. Math.random() is not used.
+  function rand() {
+    var t = (rngState + 0x6D2B79F5) | 0
+    rngState = t
+    t = Math.imul(t ^ (t >>> 15), t | 1)
+    t ^= t + Math.imul(t ^ (t >>> 7), t | 61)
+    return ((t ^ (t >>> 14)) >>> 0) / 4294967296
+  }
   function color(key, fallback) { return theme[key] || fallback }
+  // Ink for text drawn on an arbitrary fill color (e.g. a capsule's hue pill):
+  // dark ink on a light fill, light ink on a dark one, by perceived luminance.
+  function inkOn(c) { var q = Qt.color(c); return (0.299*q.r + 0.587*q.g + 0.114*q.b) > 0.55 ? "#13141c" : "#f5f5f5" }
   function baseSpeed() { return Math.min(340 * Math.pow(1.08, level - 1), 620) }
   function clamp(v, lo, hi) { return Math.max(lo, Math.min(hi, v)) }
   function paddleCenter() { return paddleX + paddleW / 2 }
@@ -93,7 +109,8 @@ FocusScope {
   readonly property alias brickModel: bricks   // for tests/game_test.qml
   readonly property alias ballView: ballView
   readonly property alias capsuleView: capsuleView
-  readonly property bool catchCountdown: catchTimer.running
+  readonly property alias messageBackdrop: messageBackdrop
+  readonly property bool catchCountdown: catchLeft > 0
 
   function loadLevel() {
     bricks.clear()
@@ -123,6 +140,7 @@ FocusScope {
     balls = [{ x: paddleCenter(), y: paddleY - ballR, vx: 0, vy: 0, stuck: true, offset: 0, speed: baseSpeed() }]
     capsules = []
     bolts = []
+    catchLeft = 0
   }
 
   // Let every stuck ball go: a serve leaves at a small random angle, a caught
@@ -132,7 +150,7 @@ FocusScope {
     for (var i = 0; i < balls.length; i++) {
       var b = balls[i]
       if (!b.stuck) continue
-      var a = serving ? (Math.random() * 40 - 20) * Math.PI / 180
+      var a = serving ? (rand() * 40 - 20) * Math.PI / 180
                       : clamp(b.offset / (paddleW / 2), -1, 1) * maxAngle
       var s = b.speed || baseSpeed()
       b.vx = s * Math.sin(a)
@@ -140,28 +158,30 @@ FocusScope {
       b.stuck = false
     }
     if (serving) { phase = "play"; banner = "" }
+    catchLeft = 0
     publish()
   }
 
   function launch() { if (phase === "serve") releaseStuck() }
 
   function newGame() {
+    if (autoSeed) seed = (Date.now() % 2147483646) + 1
+    rngState = seed | 0
     level = 1; lives = 3; score = 0; beatHigh = false
     paddleX = (fieldW - normalPaddleW) / 2
     flash(Levels.layout(1).name)
     loadLevel()
   }
 
-  // A caught ball's release timer must not run out during a pause.
+  // A caught ball's release countdown is a number decremented in step(dt), which
+  // only runs while phase === "play", so a pause freezes it for free.
   function pause() {
     if (phase !== "play") return
     phase = "paused"
-    catchTimer.stop()
   }
   function resume() {
     if (phase !== "paused") return
     phase = "play"
-    if (anyStuck()) catchTimer.restart()
   }
   function togglePause() {
     if (phase === "play") pause()
@@ -245,8 +265,8 @@ FocusScope {
   // ---- power-ups --------------------------------------------------------------
   function maybeDrop(x, y) {
     if (capsules.length > 0 || balls.length > 1) return   // one at a time, none in multi-ball
-    if (Math.random() >= dropChance) return
-    spawnCapsule(PowerUps.pick(Math.random()), x, y)
+    if (rand() >= dropChance) return
+    spawnCapsule(PowerUps.pick(rand()), x, y)
   }
 
   function spawnCapsule(type, x, y) {
@@ -267,7 +287,7 @@ FocusScope {
     addScore(100)
     switch (type) {
     case "wide": case "catch": setMode(type); break
-    case "laser": setMode("laser"); laserReady = true; break
+    case "laser": setMode("laser"); laserCooldown = 0; break
     case "slow":
       var slow = baseSpeed() * 0.7
       for (var i = 0; i < balls.length; i++) {
@@ -301,8 +321,7 @@ FocusScope {
   function fireLaser() {
     if (paddleMode !== "laser" || !laserReady || phase !== "play") return false
     bolts.push({ x: paddleX + 6, y: paddleY - boltH }, { x: paddleX + paddleW - 6 - boltW, y: paddleY - boltH })
-    laserReady = false
-    laserTimer.restart()
+    laserCooldown = 0.28
     return true
   }
 
@@ -338,6 +357,14 @@ FocusScope {
     }
     if (phase !== "play") return
 
+    // Countdowns: numbers decremented here, not Timers, so a pause (which stops
+    // step() from running at all) freezes them for free.
+    if (laserCooldown > 0) laserCooldown -= dt
+    if (catchLeft > 0) {
+      catchLeft -= dt
+      if (catchLeft <= 0) { catchLeft = 0; if (anyStuck()) releaseStuck() }
+    }
+
     for (i = balls.length - 1; i >= 0; i--) {
       var b = balls[i]
       if (b.stuck) continue
@@ -356,7 +383,7 @@ FocusScope {
         b.y = paddleY - ballR
         if (paddleMode === "catch") {
           b.stuck = true; b.offset = b.x - cx; b.speed = s; b.vx = 0; b.vy = 0
-          catchTimer.restart()
+          catchLeft = 3
           continue
         }
         var rel = clamp((b.x - cx) / (paddleW / 2), -1, 1)
@@ -411,9 +438,6 @@ FocusScope {
   }
 
   Timer { id: bannerTimer; interval: 1800; onTriggered: game.banner = "" }
-  Timer { id: laserTimer; interval: 280; onTriggered: game.laserReady = true }
-  // A caught ball goes by itself after a moment.
-  Timer { id: catchTimer; interval: 3000; onTriggered: if (game.phase === "play" && game.anyStuck()) game.releaseStuck() }
 
   // Pause when the window loses focus mid-rally.
   Connections {
@@ -550,7 +574,7 @@ FocusScope {
         Text {
           anchors.centerIn: parent
           text: capsule.p ? capsule.p.label : ""
-          color: game.color("dark_background", "#13141c")
+          color: game.inkOn(capsule.color)
           font.pixelSize: 11; font.bold: true; font.family: "monospace"
         }
       }
@@ -605,10 +629,14 @@ FocusScope {
     // Messages. Paused and game-over messages get a backdrop so a frozen ball
     // can't sit on top of the text.
     Rectangle {
+      id: messageBackdrop
       anchors.centerIn: messages
       width: messages.width + 48; height: messages.height + 32
       radius: 8
+      // Also behind the title on the very first serve, but not on a respawn
+      // (banner still showing, or the score already moved).
       visible: game.phase === "paused" || game.phase === "over"
+             || (game.phase === "serve" && game.banner === "" && game.score === 0)
       color: game.color("dark_background", "#13141c")
       opacity: 0.92
       border.width: 1

@@ -2,16 +2,16 @@ import QtQuick
 import Quickshell
 import Quickshell.Io
 
-// Circuit Crawl runs as its own Quickshell process (bin/arcade: quickshell -n -p
-// games/crawl/shell.qml), never inside the Omarchy bar, so nothing it does can
-// take the shell down. It reads the active Omarchy theme for its colors and keeps
-// one number on disk: the high score.
+// Tetherwake runs as its own Quickshell process (bin/arcade: quickshell -n -p
+// game/shell.qml), never inside the Omarchy bar, so nothing it does can take the
+// shell down. It reads the active Omarchy theme for its colors and keeps one
+// number on disk: the high score.
 ShellRoot {
   id: root
 
   readonly property string home: Quickshell.env("HOME") || ""
   readonly property string stateHome: Quickshell.env("XDG_STATE_HOME") || (home + "/.local/state")
-  readonly property string scoreFile: stateHome + "/omarchy-arcade/crawl.json"
+  readonly property string scoreFile: stateHome + "/omarchy-arcade/tetherwake.json"
   readonly property string themeColors: stateHome + "/omarchy/current/theme/colors.toml"
 
   property var theme: ({})
@@ -65,11 +65,11 @@ ShellRoot {
 
   FloatingWindow {
     id: window
-    title: "Circuit Crawl"
+    title: "Tetherwake"
     color: root.theme.background || "#1a1b26"
-    implicitWidth: 680
+    implicitWidth: 960
     implicitHeight: 720
-    minimumSize: Qt.size(340, 360)
+    minimumSize: Qt.size(480, 360)
 
     // Quickshell keeps running when its last window closes; closing the window
     // (Super+W, the titlebar) ends the game.

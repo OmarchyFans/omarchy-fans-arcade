@@ -165,8 +165,16 @@ ShellRoot {
     check("Leak on the chase turns at random", Bugs.targetFor("Leak", { c: 1, r: 1 }, heroT, "chase", 21, 21) === null)
     t = Bugs.targetFor("Null", { c: 1, r: 1 }, heroT, "scatter", 21, 21)
     check("in scatter a bug heads for its corner", t.c === 19 && t.r === -3, JSON.stringify(t))
-    check("greedy choice: the way that gets closest", Bugs.chooseDir([0, 2, 3], { c: 5, r: 5 }, { c: 9, r: 5 }) === 3)
-    check("greedy ties go up, left, down, right", Bugs.chooseDir([2, 0], { c: 5, r: 5 }, { c: 5, r: 5 }) === 0)
+    check("greedy choice: the way that gets closest", Bugs.chooseDir([0, 2, 3], { c: 5, r: 5 }, { c: 9, r: 5 }, 21) === 3)
+    check("greedy ties go up, left, down, right", Bugs.chooseDir([2, 0], { c: 5, r: 5 }, { c: 5, r: 5 }, 21) === 0)
+
+    // Bug fix: Loop's proximity check and chooseDir's greedy pick used to
+    // measure straight-line distance only, so a bug just across the tunnel
+    // seam looked far away, and a bug near the seam picked the long way round.
+    t = Bugs.targetFor("Loop", { c: 0, r: 10 }, { c: 20, r: 10, fx: 1, fy: 0 }, "chase", 21, 21)
+    check("Loop notices Byte just across the tunnel seam", t.c === 20 && t.r === 10, JSON.stringify(t))
+    check("chooseDir picks the short way across the seam, not the long way round",
+          Bugs.chooseDir([1, 3], { c: 1, r: 5 }, { c: 19, r: 5 }, 21) === 1)
 
     // ---- bug decisions in the game ------------------------------------------------------
     play(g)
@@ -222,6 +230,31 @@ ShellRoot {
     g.step(1 / 240)
     check("scatter ends in chase, and the bugs turn around", g.mode === "chase" && b.dx === 1, g.mode + " " + b.dx)
 
+    // Bug fix: a scatter/chase reversal used to be silently overridden when a
+    // bug sat exactly at a tile centre (a real junction), because the very
+    // next decide() there could steer it somewhere other than the reversal.
+    // Build a real 4-way junction and put Byte where the greedy pick would go
+    // a different way (up, not back) to prove the forced reversal wins.
+    play(g)
+    g.maze = Mazes.parse(["#####", "#...#", "#...#", "#...#", "#####"])
+    b = bug(g, "Null")
+    activate(b, 2, 2, 1, 0)      // heading east, exactly at the junction centre
+    place(g.hero, 2, 0, 0, 0)    // due north: the greedy choice would turn up, not back
+    g.modeIndex = 0; g.modeTime = 0.001
+    g.modeTick(0.002)
+    g.bugStep(b, 1 / 240)
+    check("a mode reversal at a junction centre is not swallowed by the junction pick",
+          b.dx === -1 && b.dy === 0, b.dx + "," + b.dy)
+
+    b = bug(g, "Race")
+    activate(b, 2, 2, 1, 0)
+    place(g.hero, 2, 0, 0, 0)
+    g.startPatch()
+    g.bugStep(b, 1 / 240)
+    check("a patch's reversal at a junction centre is not swallowed either",
+          b.dx === -1 && b.dy === 0 && b.patched, b.dx + "," + b.dy)
+    g.loadLevel()
+
     // ---- debug chips -------------------------------------------------------------------------
     play(g)
     kill(g, 2, 15)
@@ -230,13 +263,13 @@ ShellRoot {
     place(g.hero, 2, 15, -1, 0)
     x0 = g.score
     run(g, 0.5, function () { return !aliveAt(g, 1, 15) })
-    check("a chip scores 50", !aliveAt(g, 1, 15) && g.score === x0 + 50, g.score - x0)
+    check("a chip scores 60", !aliveAt(g, 1, 15) && g.score === x0 + 60, g.score - x0)
     check("a chip patches the bugs for the level's time", near(g.patchTime, Bugs.patchSeconds(1), 0.02) && b.patched && bug(g, "Race").patched, g.patchTime)
     check("patched bugs turn around", b.dx === 1, b.dx)
     check("patched bugs are slower", near(g.speedOf(b), g.bugSpeed() * 0.55) && g.speedOf(b) < g.bugSpeed())
     check("patch time shrinks every level", Bugs.patchSeconds(3) < Bugs.patchSeconds(1) && Bugs.patchSeconds(20) >= 1.5)
 
-    // Squash tiers: 200, 400, 800, 1600, and a full-debug bonus for all four.
+    // Squash tiers: 150, 300, 600, 1200, and a full-debug bonus for all four.
     place(g.hero, 1, 15, 0, 0)
     var gains = [], names = ["Null", "Race", "Leak", "Loop"]
     for (i = 0; i < names.length; i++) {
@@ -247,7 +280,7 @@ ShellRoot {
       g.step(1 / 240)
       gains.push(g.score - x0)
     }
-    check("squashes score 200, 400, 800, then 1600 + 1000 for all four", gains.join(",") === "200,400,800,2600", gains.join(","))
+    check("squashes score 150, 300, 600, then 1200 + 900 for all four", gains.join(",") === "150,300,600,2100", gains.join(","))
     check("a squashed bug runs home", bug(g, "Null").state === "return" && !bug(g, "Null").patched, bug(g, "Null").state)
     check("a squash holds the board still a moment", g.freezeTime > 0 && g.phase === "play")
     for (i = 1; i < 4; i++) { var ob = bug(g, names[i]); ob.state = "pen"; ob.release = 1e9; ob.x = 10; ob.y = 9 }
@@ -287,7 +320,7 @@ ShellRoot {
     x0 = g.score
     var left0 = g.bitsLeft
     run(g, 0.3, function () { return !aliveAt(g, 9, 15) })
-    check("a bit scores 10", g.score === x0 + 10 && g.bitsLeft === left0 - 1, g.score - x0)
+    check("a bit scores 12", g.score === x0 + 12 && g.bitsLeft === left0 - 1, g.score - x0)
 
     play(g)
     for (i = 0; i < g.bitModel.count; i++) {
@@ -325,7 +358,7 @@ ShellRoot {
     place(g.hero, 10, 15, -1, 0)
     g.eaten = g.coffeeAt[0] - 1
     run(g, 0.3, function () { return g.coffeeOn })
-    check("coffee appears after enough bits", g.coffeeOn && g.coffeeValue === 100 && g.coffeeShown === 1)
+    check("coffee appears after enough bits", g.coffeeOn && g.coffeeValue === 90 && g.coffeeShown === 1)
     run(g, g.coffeeSeconds + 0.1)
     check("coffee goes cold after a few seconds", !g.coffeeOn)
     check("coffee comes twice a board", g.coffeeAt.length === 2 && g.coffeeAt[1] > g.coffeeAt[0] && g.coffeeAt[1] < total)
@@ -344,11 +377,34 @@ ShellRoot {
 
     // ---- extra life ---------------------------------------------------------------------------
     play(g)
-    g.score = 9990
+    g.score = 14990
     g.addScore(10)
-    check("10000 points earns a life", g.lives === 4 && g.extraGiven, g.lives)
+    check("15000 points earns a life", g.lives === 4 && g.extraGiven, g.lives)
     g.addScore(10000)
     check("only once", g.lives === 4, g.lives)
+
+    // ---- difficulty curve -----------------------------------------------------------------------
+    // Bug fix: bugSpeed() used to grow faster and cap higher than heroSpeed(),
+    // so from level 7 on the bugs outran Byte and stayed ahead. Check every
+    // level up to well past both caps that Byte is never slower.
+    var everCrossed = false, crossLevel = 0
+    for (var lv = 1; lv <= 30; lv++) {
+      g.level = lv
+      if (g.heroSpeed() < g.bugSpeed()) { everCrossed = true; crossLevel = lv }
+    }
+    check("Byte is never slower than the bugs, at any level", !everCrossed, "first crossed at level " + crossLevel)
+    g.level = 1
+
+    // ---- Byte's colour: a hue guard --------------------------------------------------------------
+    // Bug fix (review item): a theme with a yellow accent would otherwise make
+    // Byte yellow by coincidence; the guard nudges only that hue band.
+    g.theme = ({ accent: "#ffd000" })          // squarely in the classic-hero yellow band
+    var yellowHero = g.hexToHsl(g.heroColor())
+    check("a yellow accent is nudged off the classic hero's hue",
+          !(yellowHero.h >= g.yellowHueLo && yellowHero.h <= g.yellowHueHi), yellowHero.h)
+    g.theme = ({ accent: "#7aa2f7" })          // an ordinary blue accent
+    check("a non-yellow accent passes through unchanged", g.heroColor() === "#7aa2f7", g.heroColor())
+    g.theme = ({})
 
     // ---- pause and focus ---------------------------------------------------------------------
     play(g)
@@ -401,6 +457,19 @@ ShellRoot {
     check("beating the best is a new high score", g.beatHigh && g.highScore === 510, g.highScore)
     g.newGame(5)
     check("a new game clears the new-high-score flag", !g.beatHigh)
+
+    // ---- HUD -------------------------------------------------------------------------------------
+    play(g)
+    g.lives = 3
+    check("every life is drawn, not just the spares", g.livesView.count === 3, g.livesView.count)
+    g.lives = 1
+    check("down to one life, one icon is still drawn", g.livesView.count === 1, g.livesView.count)
+
+    g.newGame(5)
+    check("the title screen leads with the start key",
+          g.hintText.text.indexOf("Space or an arrow to start") === 0, g.hintText.text)
+
+    check("OVERCLOCK is legible, not low-contrast orange", g.overclockLabel.color == "#c0caf5", g.overclockLabel.color)
 
     // ---- drawing follows the model ----------------------------------------------------------------
     play(g)

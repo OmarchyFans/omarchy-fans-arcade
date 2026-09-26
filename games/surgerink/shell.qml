@@ -2,8 +2,8 @@ import QtQuick
 import Quickshell
 import Quickshell.Io
 
-// Circuit Crawl runs as its own Quickshell process (bin/arcade: quickshell -n -p
-// games/crawl/shell.qml), never inside the Omarchy bar, so nothing it does can
+// Surge Rink runs as its own Quickshell process (bin/arcade: quickshell -n -p
+// games/surgerink/shell.qml), never inside the Omarchy bar, so nothing it does can
 // take the shell down. It reads the active Omarchy theme for its colors and keeps
 // one number on disk: the high score.
 ShellRoot {
@@ -11,7 +11,7 @@ ShellRoot {
 
   readonly property string home: Quickshell.env("HOME") || ""
   readonly property string stateHome: Quickshell.env("XDG_STATE_HOME") || (home + "/.local/state")
-  readonly property string scoreFile: stateHome + "/omarchy-arcade/crawl.json"
+  readonly property string scoreFile: stateHome + "/omarchy-arcade/surgerink.json"
   readonly property string themeColors: stateHome + "/omarchy/current/theme/colors.toml"
 
   property var theme: ({})
@@ -65,11 +65,11 @@ ShellRoot {
 
   FloatingWindow {
     id: window
-    title: "Circuit Crawl"
+    title: "Surge Rink"
     color: root.theme.background || "#1a1b26"
-    implicitWidth: 680
-    implicitHeight: 720
-    minimumSize: Qt.size(340, 360)
+    implicitWidth: 984
+    implicitHeight: 624
+    minimumSize: Qt.size(492, 312)
 
     // Quickshell keeps running when its last window closes; closing the window
     // (Super+W, the titlebar) ends the game.
@@ -83,7 +83,8 @@ ShellRoot {
       theme: root.theme
       onQuitRequested: root.quit()
       onNewHighScore: saveTimer.restart()
-      onPhaseChanged: if (phase === "over") root.saveHigh()
+      // A run's score is final when it ends, and banked between matches.
+      onPhaseChanged: if (phase === "over" || phase === "won") root.saveHigh()
     }
   }
 }

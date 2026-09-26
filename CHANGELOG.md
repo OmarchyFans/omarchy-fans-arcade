@@ -1,5 +1,13 @@
 # Changelog
 
+## 0.5.0
+
+- Super MMA Fighter: seven invented fighters whose strengths come from real fight statistics, with KO, submission and decision wins.
+- Tetherwake: a vector space shooter where you tow and fling mines on a tether.
+- Dockhop: guide a courier bot across warehouse lanes into the dock bays.
+- Surge Rink: air hockey with charged smashes and curving shots, vs the CPU or a friend.
+- Circuit Crawl, Lattice Siege, Glintfall and Solder Snap got a polish pass: fairer difficulty, bug fixes and better light-theme colors.
+
 ## 0.4.0
 
 - Four new built-in games: Circuit Crawl (maze chase), Lattice Siege (formation shooter), Glintfall (falling blocks) and Solder Snap (match-three).

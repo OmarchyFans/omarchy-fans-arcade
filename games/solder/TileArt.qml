@@ -10,7 +10,13 @@ Item {
   property var host: null
   property int kind: -1
   property string special: ""
-  readonly property real glow: host ? host.glow : 0.7
+  // Only an LED, a Core or a special's rails/ring actually draw anything from
+  // host.glow. QML only re-evaluates a binding for the dependencies it read on
+  // its last run, so gating the read behind `glowing` keeps the other tiles
+  // (most of the board) from re-binding on every tick of the host's pulse
+  // animation for a value they never use.
+  readonly property bool glowing: special !== "" || kind === 2 || kind === Board.CORE
+  readonly property real glow: glowing && host ? host.glow : 0.7
   function col(key, fallback) { return host ? host.color(key, fallback) : fallback }
   readonly property color tint: host ? host.kindColor(kind) : "#a9b1d6"
   readonly property color ink: col("dark_background", "#16161e")

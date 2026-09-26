@@ -12,10 +12,31 @@ feature that involves shipping content.
 > catalog of metadata and hashes, plus code that runs on the user's machine and
 > operates on content the user already has.
 
-## What 0.1.0 ships
+## What Arcade ships
 
-- **Brick Blitz**, an original game written for Arcade under the MIT license. It is not a
-  copy of any commercial title and doesn't use one's name, art or code.
+- **Nine original built-in games**, written for Arcade under the MIT license:
+  - Brick Blitz
+  - Circuit Crawl
+  - Lattice Siege
+  - Glintfall
+  - Solder Snap
+  - Super MMA Fighter
+  - Tetherwake
+  - Dockhop
+  - Surge Rink
+
+  None is a copy of a commercial title. Each uses the genre's mechanics, which anyone may
+  use, but not another game's name, characters, art, sounds, level layouts or distinctive
+  look. The per-genre rules they follow are in [GAMES.md](GAMES.md), under "Legal".
+- **Super MMA Fighter uses no real person.** Its seven fighters are invented, and so are
+  their names, nicknames and hometowns. Their ratings and finish splits are anonymous
+  averages, by fighting style, of several elite fighters' public professional records,
+  rounded and balanced for play. That is statistics, not anyone's identity or likeness
+  (compare *Keller v. EA*, 2013). No real promotion, event, belt or mark (such as UFC or
+  "the Octagon") appears.
+
+  The research behind the averages stays outside this repository. `tests/run.sh` fails
+  the build if a real fighter's name appears under `games/`.
 - **Launchers** that start MAME with ROM files the user supplies. Arcade checks those
   files with MAME's own `-verifyroms`. It never downloads, links to or bundles them.
 - **An installer step for MAME itself.** On first play, Arcade asks Omarchy's

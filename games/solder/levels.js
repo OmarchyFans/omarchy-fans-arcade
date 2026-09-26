@@ -20,9 +20,15 @@ var POINTS_PER_TILE = 10          // times the cascade number
 var SPECIAL_BONUS = { h: 60, v: 60, x: 90, core: 150 }
 var MOVE_BONUS = 120              // per move left when a level is won
 
+// A greedy bot that never uses Reroute (arcade/tests/solder_test.qml, "difficulty
+// curve") clears levels 1-2 every time but sometimes with zero moves to spare, a
+// squeeze a first-time player (who won't play as sharply, and won't yet know about
+// Reroute either) would likely lose. Two extra moves on each gives breathing room
+// without changing the target or the goal, so the levels teach the mechanics
+// before the game gets tight.
 var LEVELS = [
-  { name: "Breadboard",   kinds: 5, moves: 20, target: 1200, goals: [{ kind: 2, n: 14 }], fried: 0 },
-  { name: "Through-Hole", kinds: 5, moves: 20, target: 1600, goals: [{ kind: 0, n: 16 }, { kind: 1, n: 16 }], fried: 0 },
+  { name: "Breadboard",   kinds: 5, moves: 22, target: 1200, goals: [{ kind: 2, n: 14 }], fried: 0 },
+  { name: "Through-Hole", kinds: 5, moves: 22, target: 1600, goals: [{ kind: 0, n: 16 }, { kind: 1, n: 16 }], fried: 0 },
   { name: "Burnt Relay",  kinds: 5, moves: 24, target: 1600, goals: [], fried: 6 },
   { name: "Signal Chain", kinds: 6, moves: 24, target: 1500, goals: [{ kind: 3, n: 16 }], fried: 2 },
   { name: "Power Rail",   kinds: 6, moves: 22, target: 1800, goals: [{ kind: 4, n: 16 }, { kind: 5, n: 16 }], fried: 0 },
