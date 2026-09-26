@@ -159,7 +159,9 @@ cmd_install_mame() {
   local then="" keep=1
   while (( $# )); do
     case "$1" in
-      --then) then=${2:-}; shift ;;
+      --then)
+        [[ -n ${2:-} ]] || { echo "usage: arcade install-mame [--then GAME]" >&2; return 2; }
+        then=$2; shift ;;
       --no-hold) keep=0 ;;               # a caller (install.sh) carries on by itself
     esac
     shift

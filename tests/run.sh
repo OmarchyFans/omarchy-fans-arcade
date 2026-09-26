@@ -121,7 +121,10 @@ if want cli; then
 
   reset_log
   ARCADE_MAME=$NOMAME STUB_PKG_FAIL=1 expect_exit 1 "install-mame: a failed install exits 1" -- "$A" install-mame --then galaga
-  grep -q 'did not install' "$T/out" && ! logged "play galaga" || tfail "failed install must not start the game"
+  # A wrongly started game would run detached and raise a notification titled
+  # "Galaga" (MAME still missing: "Installing MAME first"); give it time.
+  sleep 1
+  grep -q 'did not install' "$T/out" && ! logged "Galaga" || tfail "failed install must not start the game"
   pass "a failed install says so and starts nothing"
 
   reset_log
@@ -131,6 +134,8 @@ if want cli; then
   pass "install-mame --then starts the picked game on its own"
   rm -f "$NOMAME"
   expect_exit 2 "install-mame --then an unknown game: exits 2" -- "$A" install-mame --then nope
+  expect_exit 2 "install-mame --then with no game: exits 2" -- "$A" install-mame --then
+  grep -q "usage: arcade install-mame" "$T/out" || tfail "install-mame --then with no game should print usage"
 
   reset_log
   rm -rf "$ROMS"
@@ -147,16 +152,16 @@ if want cli; then
   rm -rf "$ROMS"
   reset_log
   expect_exit 4 "no ROM folder: exits 4" -- "$A" play galaga
-  [[ -d $ROMS ]] && logged "record $ROMS" || tfail "no ROM folder: it should be created and opened"
+  [[ -d $ROMS ]] && wait_for_log "record $ROMS" || tfail "no ROM folder: it should be created and opened"
   pass "no ROM folder, from the bar: creates it and opens it"
   reset_log
   expect_exit 5 "no ROM zip: exits 5" -- "$A" play ssf2
   logged "ssf2.zip" && logged "qsound.zip" && logged "0.289" && logged "can't include" || tfail "missing-ROM notification"
-  logged "record $ROMS" || tfail "missing ROM, from the bar: the ROM folder should open"
+  wait_for_log "record $ROMS" || tfail "missing ROM, from the bar: the ROM folder should open"
   pass "missing ROM, from the bar: opens the ROM folder and names the zip, device ROM and MAME version"
   reset_log
   ARCADE_INTERACTIVE=1 expect_exit 5 "missing ROM at a terminal: exits 5" -- "$A" play ssf2
-  ! logged "record $ROMS" || tfail "at a terminal the ROM folder should not pop open"
+  sleep 1; ! logged "record $ROMS" || tfail "at a terminal the ROM folder should not pop open"
   pass "missing ROM at a terminal: says so without opening windows"
 
   : >"$ROMS/galaga.zip"
@@ -226,7 +231,8 @@ if want install; then
   "$ROOT/install.sh" >"$T/inst" || tfail "install.sh"
   grep -q 'Brick Blitz' "$T/inst" && [[ -d $XDG_CONFIG_HOME/omarchy-arcade && -d $HOME/Games/arcade ]] || tfail "install.sh output or folders"
   pass "install.sh creates Arcade's folders and reports"
-  ARCADE_MAME=/nonexistent "$ROOT/install.sh" | grep -q 'installs automatically' || tfail "install.sh without MAME, no terminal"
+  ARCADE_MAME=/nonexistent "$ROOT/install.sh" >"$T/inst0" || tfail "install.sh without MAME, no terminal"
+  grep -q 'installs automatically' "$T/inst0" || tfail "install.sh without MAME, no terminal"
   pass "install.sh with no terminal: says MAME installs on first play"
   reset_log
   # At a terminal (also the plugin's update terminal) install.sh asks first.
