@@ -2,16 +2,18 @@
 
 Arcade games from your Omarchy bar.
 
-- **Brick Blitz**, an original brick-breaker, plays the moment you install. You don't
-  need anything else.
+- **Five original games** play the moment you install, with nothing else needed:
+  **Brick Blitz** (brick-breaker), **Circuit Crawl** (maze chase), **Lattice Siege**
+  (formation shooter), **Glintfall** (falling blocks) and **Solder Snap** (match-three).
 - **Pac-Man**, **Galaga** and **Super Street Fighter II** launch in MAME from your own
   ROM files. Arcade installs MAME for you the first time you pick one, checks your ROMs
   and tells you exactly what's missing.
 
 An Omarchy.Fans product by ModPunk. MIT licensed, free, no account.
 
-> Arcade never downloads, links to or includes game ROMs. Brick Blitz is our own game.
-> The MAME launchers only start games from files you already have.
+> Arcade never downloads, links to or includes game ROMs. The built-in games are our own:
+> original names, characters, levels and looks. The MAME launchers only start games from
+> files you already have.
 
 ## Install
 
@@ -73,7 +75,61 @@ Broken bricks sometimes drop a capsule. Catch it with the paddle to use it:
 - The colors follow your current Omarchy theme.
 
 Brick Blitz runs as its own small Quickshell window, separate from your bar, so a
-problem in the game can't affect your desktop.
+problem in the game can't affect your desktop. So does every built-in game.
+
+## More built-in games
+
+Every built-in game shares these keys: **P** pauses, **Esc** quits, and **Enter** plays
+again after a game over. A game also pauses when its window loses focus. High scores
+are saved in `~/.local/state/omarchy-arcade/<game>.json`, and colors follow your
+Omarchy theme.
+
+### Circuit Crawl: maze chase
+
+You're **Byte**, a little robot collecting bits on a circuit board.
+- **Four bugs** hunt you, each in its own way:
+  - **Null** heads straight for you.
+  - **Race** cuts you off.
+  - **Leak** wanders.
+  - **Loop** guards its corner until you come close.
+- **Debug chips** make the bugs squashable for a while; squash all four on one chip for
+  a bonus.
+- **Coffee** turns up twice per level; it scores points and overclocks Byte.
+- Two boards, *Motherboard* and *Northbridge*, get faster each level.
+
+Arrows or WASD steer. A turn is remembered until the next junction.
+
+### Lattice Siege: formation shooter
+
+Geometric enemies (nodes, relays and prisms) fly in on curved paths and wire themselves
+into **constellations**.
+- Destroy a whole constellation quickly (a **link snap**) to earn a **wing drone**. Up to
+  two fly beside your cannon, fire with it, and take a hit for you.
+- Squads dive together from stage 3, and every fourth stage brings a boss.
+
+Left/right or A/D move; Space fires (hold to keep firing).
+
+### Glintfall: falling blocks
+
+A **12-column well** and a family of **ten pieces of three and five cells**.
+- Some pieces carry a **glint** cell. Clearing a row with a glint in it **bursts** the
+  area around it for bonus points, and chained bursts score more.
+- Hold a piece (**C** or Shift), and see the next three coming.
+
+Left/right move, Up/X turn, Z turns back, Down soft-drops, Space hard-drops.
+
+### Solder Snap: match-three
+
+Swap circuit parts (resistors, capacitors, LEDs, chips and transistors) to line up three
+or more.
+- Lines of four build **bus** parts that clear a row or column, and L/T shapes build
+  bigger specials.
+- **Fried parts** block the board until a match next to them repairs them.
+- Fill the **flux** meter to **Reroute**: turn a 2×2 block for free.
+- Each level has a goal and a move limit.
+
+Use the mouse (drag or click two parts), or the arrows plus Space. R reroutes and H
+shows a hint.
 
 ## Pac-Man, Galaga and Super Street Fighter II (your own ROMs)
 

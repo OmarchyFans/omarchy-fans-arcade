@@ -238,15 +238,16 @@ cmd_play() {
 }
 
 # What each game needs. --json is what the bar menu reads:
-#   [{id, title, kind: builtin|mame, state: ready|no-mame|no-rom|rom-found, note}]
+#   [{id, title, kind: builtin|mame, state: ready|no-mame|no-rom|rom-found, note, genre}]
 cmd_list() {
-  local id dir state status note kind json=0 rows=()
+  local id dir state status note kind genre json=0 rows=()
   [[ ${1:-} == --json ]] && json=1
   dir=$(rom_dir)
   while IFS= read -r id; do
-    kind=mame
+    kind=mame; genre=""
     if ! is_mame "$id"; then
       kind=builtin
+      genre=$(builtin_field "$id" genre)
       note=$(builtin_field "$id" note); [[ -n $note ]] || note="built in"
       state=ready;     status="ready"
     elif [[ ! -x $MAME ]]; then
@@ -257,8 +258,8 @@ cmd_list() {
       state=no-rom;    status="add your own $id.zip to $dir";   note="needs $id.zip"
     fi
     if (( json )); then
-      rows+=("$(jq -nc --arg id "$id" --arg title "$(game_title "$id")" --arg kind "$kind" --arg state "$state" --arg note "$note" \
-        '{id: $id, title: $title, kind: $kind, state: $state, note: $note}')")
+      rows+=("$(jq -nc --arg id "$id" --arg title "$(game_title "$id")" --arg kind "$kind" --arg state "$state" --arg note "$note" --arg genre "$genre" \
+        '{id: $id, title: $title, kind: $kind, state: $state, note: $note, genre: $genre}')")
     else
       printf '%-10s %-26s %s\n' "$id" "$(game_title "$id")" "$status"
     fi

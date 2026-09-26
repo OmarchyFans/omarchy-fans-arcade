@@ -1,5 +1,11 @@
 # Changelog
 
+## 0.4.0
+
+- Four new built-in games: Circuit Crawl (maze chase), Lattice Siege (formation shooter), Glintfall (falling blocks) and Solder Snap (match-three).
+- The menu groups built-in games (with their genre) apart from your MAME games.
+- Every built-in game runs in its own window, pauses when you switch away, and keeps its own high score.
+
 ## 0.3.0
 
 - Brick Blitz power-ups: broken bricks drop capsules you catch with the paddle.

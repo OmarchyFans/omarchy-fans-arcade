@@ -35,7 +35,7 @@ BarWidget {
   // games/<id>/ (see docs/GAMES.md), then the MAME games. This fallback shows
   // until the first answer arrives.
   readonly property var fallbackGames: [
-    { id: "brick",  title: "Brick Blitz",             kind: "builtin", note: "built in" },
+    { id: "brick",  title: "Brick Blitz",             kind: "builtin", note: "built in", genre: "brick-breaker" },
     { id: "pacman", title: "Pac-Man",                 kind: "mame",    note: "MAME · your ROM" },
     { id: "galaga", title: "Galaga",                  kind: "mame",    note: "MAME · your ROM" },
     { id: "ssf2",   title: "Super Street Fighter II", kind: "mame",    note: "MAME · your ROM" }
@@ -63,6 +63,36 @@ BarWidget {
         root.gameStatus = map
         if (rows.length) root.gameRows = rows
       } catch (e) { root.gameStatus = {} }
+    }
+  }
+
+  // One menu row: the game's button, then its genre (built-ins) or its live ROM
+  // status (MAME games) from `arcade list --json`.
+  Component {
+    id: gameRow
+    Row {
+      required property var modelData
+      spacing: Style.space(4)
+      readonly property var live: root.gameStatus[modelData.id] || null
+      readonly property bool builtin: modelData.kind === "builtin"
+      readonly property bool missingRom: !!live && live.state === "no-rom"
+      Button {
+        text: modelData.title
+        bordered: parent.builtin
+        foreground: parent.builtin ? Color.accent : Color.popups.text
+        // Still clickable without its ROM: that opens the ROM folder.
+        opacity: parent.missingRom ? 0.55 : 1
+        onClicked: root.arcade(["play", modelData.id])
+      }
+      Text {
+        anchors.verticalCenter: parent.verticalCenter
+        textFormat: Text.PlainText
+        text: parent.builtin ? (modelData.genre || modelData.note || "")
+                             : (parent.live ? parent.live.note : modelData.note)
+        color: parent.missingRom ? Color.urgent : Color.popups.text
+        opacity: parent.missingRom ? 0.9 : 0.55
+        font.family: Style.font.family; font.pixelSize: Style.font.caption
+      }
     }
   }
 
@@ -199,31 +229,25 @@ BarWidget {
         text: "Arcade"
         color: Color.popups.text; font.family: Style.font.family; font.pixelSize: Style.font.body; font.bold: true
       }
+      // Built-in games, then the MAME games that run from your own ROMs.
+      Text {
+        textFormat: Text.PlainText
+        text: "BUILT-IN GAMES"
+        color: Color.popups.text; opacity: 0.5; font.family: Style.font.family; font.pixelSize: Style.font.caption; font.bold: true
+      }
       Repeater {
-        model: root.games
-        delegate: Row {
-          required property var modelData
-          spacing: Style.space(4)
-          // What bin/arcade reports for this game right now (see refreshStatus).
-          readonly property var live: root.gameStatus[modelData.id] || null
-          readonly property bool missingRom: !!live && live.state === "no-rom"
-          Button {
-            text: modelData.title
-            bordered: modelData.kind === "builtin"
-            foreground: modelData.kind === "builtin" ? Color.accent : Color.popups.text
-            // Still clickable without its ROM: that opens the ROM folder.
-            opacity: parent.missingRom ? 0.55 : 1
-            onClicked: root.arcade(["play", modelData.id])
-          }
-          Text {
-            anchors.verticalCenter: parent.verticalCenter
-            textFormat: Text.PlainText
-            text: parent.live ? parent.live.note : modelData.note
-            color: parent.missingRom ? Color.urgent : Color.popups.text
-            opacity: parent.missingRom ? 0.9 : 0.55
-            font.family: Style.font.family; font.pixelSize: Style.font.caption
-          }
-        }
+        model: root.games.filter(function (g) { return g.kind === "builtin" })
+        delegate: gameRow
+      }
+      Rectangle { width: parent.width; height: 1; color: Color.popups.text; opacity: 0.15 }
+      Text {
+        textFormat: Text.PlainText
+        text: "YOUR ROMS · MAME"
+        color: Color.popups.text; opacity: 0.5; font.family: Style.font.family; font.pixelSize: Style.font.caption; font.bold: true
+      }
+      Repeater {
+        model: root.games.filter(function (g) { return g.kind !== "builtin" })
+        delegate: gameRow
       }
       Text {
         width: parent.width; wrapMode: Text.Wrap; textFormat: Text.PlainText
