@@ -1,11 +1,17 @@
 import QtQuick
 import "levels.js" as Levels
+import "powerups.js" as PowerUps
 
 // Brick Blitz: the whole game. It plays in a fixed 800×600 field that is scaled
 // to fit the window, so physics and layouts never depend on the window size.
 //
-// Controls: ←/→ or A/D (or the mouse) move the paddle, Space or a click launches
-// the ball, P pauses, Esc quits, Enter starts over after a game over.
+// Controls: ←/→ or A/D (or the mouse) move the paddle. Space or a click launches
+// the ball, lets a caught ball go, or fires the laser; P pauses; Esc quits;
+// Enter starts over after a game over.
+//
+// Broken bricks sometimes drop a power-up capsule (see powerups.js). A ball
+// waiting on the paddle is "stuck": that is how a serve works, and how the Catch
+// power-up works, so both are released the same way.
 FocusScope {
   id: game
   focus: true
@@ -26,24 +32,34 @@ FocusScope {
   readonly property real sideMargin: 16
   readonly property real brickW: (fieldW - 2 * sideMargin - (Levels.COLS - 1) * brickGap) / Levels.COLS
   readonly property real ballR: 7
-  readonly property real paddleW: 112
+  readonly property real normalPaddleW: 112
+  readonly property real widePaddleW: 168
+  readonly property real paddleW: paddleMode === "wide" ? widePaddleW : normalPaddleW
   readonly property real paddleH: 14
   readonly property real paddleY: fieldH - 42
   readonly property real paddleSpeed: 640      // px/s from the keyboard
   readonly property real maxAngle: 60 * Math.PI / 180
   readonly property int maxLives: 5
+  readonly property int maxBalls: 3
+  readonly property real capsuleW: 54
+  readonly property real capsuleH: 18
+  readonly property real capsuleSpeed: 150     // px/s
+  readonly property real boltW: 4
+  readonly property real boltH: 14
+  readonly property real boltSpeed: 720        // px/s
+  property real dropChance: 0.18               // per broken brick; the host may change it
 
   // ---- state --------------------------------------------------------------------
   property string phase: "serve"               // serve | play | paused | over
   property int level: 1
   property int lives: 3
   property int score: 0
-  property real speed: baseSpeed()
-  property real paddleX: (fieldW - paddleW) / 2
-  property real ballX: fieldW / 2
-  property real ballY: paddleY - ballR
-  property real vx: 0
-  property real vy: 0
+  property real paddleX: (fieldW - normalPaddleW) / 2
+  property string paddleMode: ""               // "" | wide | catch | laser
+  property var balls: []                       // { x, y, vx, vy, stuck, offset, speed }
+  property var capsules: []                    // { x, y, type }
+  property var bolts: []                       // { x, y }
+  property bool laserReady: true
   property bool leftHeld: false
   property bool rightHeld: false
   property real mouseTarget: -1                // paddle x the mouse asked for, -1 = keyboard
@@ -54,9 +70,29 @@ FocusScope {
   function color(key, fallback) { return theme[key] || fallback }
   function baseSpeed() { return Math.min(340 * Math.pow(1.08, level - 1), 620) }
   function clamp(v, lo, hi) { return Math.max(lo, Math.min(hi, v)) }
+  function paddleCenter() { return paddleX + paddleW / 2 }
+  function anyStuck() {
+    for (var i = 0; i < balls.length; i++) if (balls[i].stuck) return true
+    return false
+  }
+  // The Repeaters redraw when these arrays are replaced; physics mutates them in
+  // place, so this runs once per frame (not per physics step).
+  function publish() { balls = balls.slice(); capsules = capsules.slice(); bolts = bolts.slice() }
+  function flash(text) { banner = text; bannerTimer.restart() }
+  // What the Repeaters draw. Reading the arrays inside these functions makes a
+  // delegate's bindings depend on them, so each publish() repaints. (Holding the
+  // object in a delegate property would not: re-setting a var to the same object
+  // signals no change, and the drawing would freeze.) An index can run past the
+  // end for one frame when a ball is lost, hence the fallback.
+  readonly property var offField: ({ x: -200, y: -200, type: "" })
+  function ballAt(i) { return balls[i] || offField }
+  function capsuleAt(i) { return capsules[i] || offField }
+  function boltAt(i) { return bolts[i] || offField }
 
   ListModel { id: bricks }                     // { ch, hits, alive, bx, by }
   readonly property alias brickModel: bricks   // for tests/game_test.qml
+  readonly property alias ballView: ballView
+  readonly property alias capsuleView: capsuleView
 
   function loadLevel() {
     bricks.clear()
@@ -75,31 +111,43 @@ FocusScope {
       }
     }
     bricksLeft = n
-    speed = baseSpeed()
+    paddleMode = ""
     serve()
   }
 
+  // One ball waiting on the paddle; capsules and bolts are cleared.
   function serve() {
     phase = "serve"
-    vx = 0; vy = 0
-    ballX = paddleX + paddleW / 2
-    ballY = paddleY - ballR
+    paddleX = clamp(paddleX, 0, fieldW - paddleW)
+    balls = [{ x: paddleCenter(), y: paddleY - ballR, vx: 0, vy: 0, stuck: true, offset: 0, speed: baseSpeed() }]
+    capsules = []
+    bolts = []
   }
 
-  function launch() {
-    if (phase !== "serve") return
-    var a = (Math.random() * 40 - 20) * Math.PI / 180
-    vx = speed * Math.sin(a)
-    vy = -speed * Math.cos(a)
-    phase = "play"
-    banner = ""
+  // Let every stuck ball go: a serve leaves at a small random angle, a caught
+  // ball at the angle of where it sits on the paddle.
+  function releaseStuck() {
+    var serving = phase === "serve"
+    for (var i = 0; i < balls.length; i++) {
+      var b = balls[i]
+      if (!b.stuck) continue
+      var a = serving ? (Math.random() * 40 - 20) * Math.PI / 180
+                      : clamp(b.offset / (paddleW / 2), -1, 1) * maxAngle
+      var s = b.speed || baseSpeed()
+      b.vx = s * Math.sin(a)
+      b.vy = -s * Math.cos(a)
+      b.stuck = false
+    }
+    if (serving) { phase = "play"; banner = "" }
+    publish()
   }
+
+  function launch() { if (phase === "serve") releaseStuck() }
 
   function newGame() {
     level = 1; lives = 3; score = 0; beatHigh = false
-    paddleX = (fieldW - paddleW) / 2
-    banner = Levels.layout(1).name
-    bannerTimer.restart()
+    paddleX = (fieldW - normalPaddleW) / 2
+    flash(Levels.layout(1).name)
     loadLevel()
   }
 
@@ -113,89 +161,230 @@ FocusScope {
     if (score > highScore) { highScore = score; beatHigh = true; newHighScore(score) }
   }
 
+  // The last ball is gone: power-ups end with it.
   function loseLife() {
     lives--
-    if (lives <= 0) { phase = "over"; banner = ""; return }
-    banner = lives === 1 ? "Last ball!" : lives + " balls left"
-    bannerTimer.restart()
+    paddleMode = ""
+    if (lives <= 0) { phase = "over"; banner = ""; balls = []; capsules = []; bolts = []; return }
+    flash(lives === 1 ? "Last ball!" : lives + " balls left")
     serve()
   }
 
   function levelClear() {
     level++
     if (lives < maxLives) lives++
-    banner = "Level " + level + " · " + Levels.layout(level).name
-    bannerTimer.restart()
+    flash("Level " + level + " · " + Levels.layout(level).name)
     loadLevel()
   }
 
-  // One brick hit per step: reflect on the axis of least penetration and push
-  // the ball out, so it can never tunnel into or stick inside a brick.
-  function hitBricks() {
+  // ---- bricks -----------------------------------------------------------------
+  // One hit: a tough brick cracks (10 points), anything else breaks and may drop
+  // a capsule.
+  function damageBrick(i) {
+    var b = bricks.get(i)
+    if (b.hits > 1) {
+      bricks.setProperty(i, "hits", b.hits - 1)
+      addScore(10)
+      return
+    }
+    bricks.setProperty(i, "alive", false)
+    addScore(Levels.pointsFor(b.ch))
+    bricksLeft--
+    maybeDrop(b.bx + brickW / 2, b.by + brickH / 2)
+  }
+
+  // One brick per ball per step: reflect on the axis of least penetration and
+  // push the ball out, so it can never tunnel into or stick inside a brick.
+  function hitBricks(ball) {
     for (var i = 0; i < bricks.count; i++) {
       var b = bricks.get(i)
       if (!b.alive) continue
-      var cx = clamp(ballX, b.bx, b.bx + brickW)
-      var cy = clamp(ballY, b.by, b.by + brickH)
-      var dx = ballX - cx, dy = ballY - cy
+      var cx = clamp(ball.x, b.bx, b.bx + brickW)
+      var cy = clamp(ball.y, b.by, b.by + brickH)
+      var dx = ball.x - cx, dy = ball.y - cy
       if (dx * dx + dy * dy >= ballR * ballR) continue
-      var overX = Math.min(ballX + ballR - b.bx, b.bx + brickW - (ballX - ballR))
-      var overY = Math.min(ballY + ballR - b.by, b.by + brickH - (ballY - ballR))
+      var overX = Math.min(ball.x + ballR - b.bx, b.bx + brickW - (ball.x - ballR))
+      var overY = Math.min(ball.y + ballR - b.by, b.by + brickH - (ball.y - ballR))
       if (overX < overY) {
-        if (ballX < b.bx + brickW / 2) { ballX = b.bx - ballR; vx = -Math.abs(vx) }
-        else { ballX = b.bx + brickW + ballR; vx = Math.abs(vx) }
+        if (ball.x < b.bx + brickW / 2) { ball.x = b.bx - ballR; ball.vx = -Math.abs(ball.vx) }
+        else { ball.x = b.bx + brickW + ballR; ball.vx = Math.abs(ball.vx) }
       } else {
-        if (ballY < b.by + brickH / 2) { ballY = b.by - ballR; vy = -Math.abs(vy) }
-        else { ballY = b.by + brickH + ballR; vy = Math.abs(vy) }
+        if (ball.y < b.by + brickH / 2) { ball.y = b.by - ballR; ball.vy = -Math.abs(ball.vy) }
+        else { ball.y = b.by + brickH + ballR; ball.vy = Math.abs(ball.vy) }
       }
-      if (b.hits > 1) {
-        bricks.setProperty(i, "hits", b.hits - 1)
-        addScore(10)
-      } else {
-        bricks.setProperty(i, "alive", false)
-        addScore(Levels.pointsFor(b.ch))
-        bricksLeft--
-      }
+      damageBrick(i)
       // A little faster with every hit, up to a cap.
-      var s = Math.min(Math.hypot(vx, vy) + 3, 760)
-      var k = s / Math.max(1, Math.hypot(vx, vy))
-      vx *= k; vy *= k
-      return
+      var s = Math.min(Math.hypot(ball.vx, ball.vy) + 3, 760)
+      var k = s / Math.max(1, Math.hypot(ball.vx, ball.vy))
+      ball.vx *= k; ball.vy *= k
+      return true
+    }
+    return false
+  }
+
+  function brickUnder(x, y, w, h) { // first live brick overlapping the rectangle, or -1
+    for (var i = 0; i < bricks.count; i++) {
+      var b = bricks.get(i)
+      if (b.alive && x < b.bx + brickW && x + w > b.bx && y < b.by + brickH && y + h > b.by) return i
+    }
+    return -1
+  }
+
+  // ---- power-ups --------------------------------------------------------------
+  function maybeDrop(x, y) {
+    if (capsules.length > 0 || balls.length > 1) return   // one at a time, none in multi-ball
+    if (Math.random() >= dropChance) return
+    spawnCapsule(PowerUps.pick(Math.random()), x, y)
+  }
+
+  function spawnCapsule(type, x, y) {
+    capsules.push({ x: x - capsuleW / 2, y: y - capsuleH / 2, type: type })
+  }
+
+  // A paddle mode replaces the previous one; the paddle keeps its center.
+  function setMode(mode) {
+    var center = paddleCenter()
+    if (paddleMode === "catch" && mode !== "catch") releaseStuck()
+    paddleMode = mode
+    paddleX = clamp(center - paddleW / 2, 0, fieldW - paddleW)
+  }
+
+  function applyPowerUp(type) {
+    var p = PowerUps.byId(type)
+    if (!p) return
+    addScore(100)
+    switch (type) {
+    case "wide": case "catch": setMode(type); break
+    case "laser": setMode("laser"); laserReady = true; break
+    case "slow":
+      var slow = baseSpeed() * 0.7
+      for (var i = 0; i < balls.length; i++) {
+        var b = balls[i], s = Math.hypot(b.vx, b.vy)
+        if (s > 0) { b.vx *= slow / s; b.vy *= slow / s }
+        b.speed = slow
+      }
+      break
+    case "multi": split(); break
+    case "life": lives = Math.min(lives + 1, maxLives); break
+    case "warp": levelClear(); return        // its own banner
+    }
+    flash(p.banner)
+  }
+
+  // The first free ball splits into three: itself and two copies 25° either side.
+  function split() {
+    if (anyStuck()) releaseStuck()
+    var base = null
+    for (var i = 0; i < balls.length && !base; i++) if (!balls[i].stuck) base = balls[i]
+    if (!base) return
+    var s = Math.hypot(base.vx, base.vy)
+    var a = Math.atan2(base.vx, -base.vy)
+    var spread = [-25, 25]
+    for (var k = 0; k < spread.length && balls.length < maxBalls; k++) {
+      var na = a + spread[k] * Math.PI / 180
+      balls.push({ x: base.x, y: base.y, vx: s * Math.sin(na), vy: -s * Math.cos(na), stuck: false, offset: 0, speed: s })
     }
   }
 
+  function fireLaser() {
+    if (paddleMode !== "laser" || !laserReady || phase !== "play") return false
+    bolts.push({ x: paddleX + 6, y: paddleY - boltH }, { x: paddleX + paddleW - 6 - boltW, y: paddleY - boltH })
+    laserReady = false
+    laserTimer.restart()
+    return true
+  }
+
+  // Space, Enter and a click: launch, let a caught ball go, fire, or pause.
+  function action(pauseToo) {
+    if (phase === "serve") launch()
+    else if (phase === "play") {
+      if (anyStuck()) releaseStuck()
+      else if (paddleMode === "laser") fireLaser()
+      else if (pauseToo) togglePause()
+    }
+    else if (phase === "paused") togglePause()
+  }
+
+  // ---- physics ----------------------------------------------------------------
   function step(dt) {
-    // Paddle: the mouse wins while it is moving, the keyboard otherwise.
+    // Paddle: the keyboard wins while held, the mouse otherwise.
     if (leftHeld || rightHeld) {
       mouseTarget = -1
-      paddleX = clamp(paddleX + (rightHeld - leftHeld) * paddleSpeed * dt, 0, fieldW - paddleW)
+      paddleX += (rightHeld - leftHeld) * paddleSpeed * dt
     } else if (mouseTarget >= 0) {
-      paddleX = clamp(mouseTarget, 0, fieldW - paddleW)
+      paddleX = mouseTarget
     }
-    if (phase === "serve") { ballX = paddleX + paddleW / 2; ballY = paddleY - ballR; return }
+    paddleX = clamp(paddleX, 0, fieldW - paddleW)
+    var cx = paddleCenter()
+
+    // Stuck balls ride on the paddle: a serve, or a caught ball.
+    var i
+    for (i = 0; i < balls.length; i++) {
+      if (!balls[i].stuck) continue
+      balls[i].x = clamp(cx + balls[i].offset, ballR, fieldW - ballR)
+      balls[i].y = paddleY - ballR
+    }
     if (phase !== "play") return
 
-    ballX += vx * dt
-    ballY += vy * dt
+    for (i = balls.length - 1; i >= 0; i--) {
+      var b = balls[i]
+      if (b.stuck) continue
+      b.x += b.vx * dt
+      b.y += b.vy * dt
 
-    // Walls and ceiling.
-    if (ballX - ballR < 0) { ballX = ballR; vx = Math.abs(vx) }
-    if (ballX + ballR > fieldW) { ballX = fieldW - ballR; vx = -Math.abs(vx) }
-    if (ballY - ballR < hudH) { ballY = hudH + ballR; vy = Math.abs(vy) }
+      // Walls and ceiling.
+      if (b.x - ballR < 0) { b.x = ballR; b.vx = Math.abs(b.vx) }
+      if (b.x + ballR > fieldW) { b.x = fieldW - ballR; b.vx = -Math.abs(b.vx) }
+      if (b.y - ballR < hudH) { b.y = hudH + ballR; b.vy = Math.abs(b.vy) }
 
-    // Paddle: the further from the center it lands, the sharper the angle.
-    if (vy > 0 && ballY + ballR >= paddleY && ballY + ballR <= paddleY + paddleH + 8
-        && ballX >= paddleX - ballR && ballX <= paddleX + paddleW + ballR) {
-      var rel = clamp((ballX - (paddleX + paddleW / 2)) / (paddleW / 2), -1, 1)
-      var s = Math.hypot(vx, vy)
-      vx = s * Math.sin(rel * maxAngle)
-      vy = -s * Math.cos(rel * maxAngle)
-      ballY = paddleY - ballR
+      // Paddle: the further from the center it lands, the sharper the angle.
+      if (b.vy > 0 && b.y + ballR >= paddleY && b.y + ballR <= paddleY + paddleH + 8
+          && b.x >= paddleX - ballR && b.x <= paddleX + paddleW + ballR) {
+        var s = Math.hypot(b.vx, b.vy)
+        b.y = paddleY - ballR
+        if (paddleMode === "catch") {
+          b.stuck = true; b.offset = b.x - cx; b.speed = s; b.vx = 0; b.vy = 0
+          catchTimer.restart()
+          continue
+        }
+        var rel = clamp((b.x - cx) / (paddleW / 2), -1, 1)
+        b.vx = s * Math.sin(rel * maxAngle)
+        b.vy = -s * Math.cos(rel * maxAngle)
+      }
+
+      if (hitBricks(b) && bricksLeft <= 0) { levelClear(); return }
+      if (b.y - ballR > fieldH) balls.splice(i, 1)
     }
 
-    hitBricks()
-    if (bricksLeft <= 0) { levelClear(); return }
-    if (ballY - ballR > fieldH) loseLife()
+    // Capsules fall; the paddle catches them.
+    for (i = capsules.length - 1; i >= 0; i--) {
+      var c = capsules[i]
+      c.y += capsuleSpeed * dt
+      if (c.y + capsuleH >= paddleY && c.y <= paddleY + paddleH
+          && c.x + capsuleW >= paddleX && c.x <= paddleX + paddleW) {
+        capsules.splice(i, 1)
+        var before = level
+        applyPowerUp(c.type)
+        if (level !== before) return          // Warp loaded the next level
+        continue
+      }
+      if (c.y > fieldH) capsules.splice(i, 1)
+    }
+
+    // Laser bolts fly up and hit the first brick in their way.
+    for (i = bolts.length - 1; i >= 0; i--) {
+      var t = bolts[i]
+      t.y -= boltSpeed * dt
+      if (t.y + boltH < hudH) { bolts.splice(i, 1); continue }
+      var hit = brickUnder(t.x, t.y, boltW, boltH)
+      if (hit >= 0) {
+        bolts.splice(i, 1)
+        damageBrick(hit)
+        if (bricksLeft <= 0) { levelClear(); return }
+      }
+    }
+
+    if (balls.length === 0) loseLife()
   }
 
   FrameAnimation {
@@ -205,10 +394,14 @@ FocusScope {
       var dt = Math.min(frameTime, 1 / 30)
       var n = Math.ceil(dt / (1 / 240))
       for (var i = 0; i < n && (game.phase === "play" || game.phase === "serve"); i++) game.step(dt / n)
+      game.publish()
     }
   }
 
   Timer { id: bannerTimer; interval: 1800; onTriggered: game.banner = "" }
+  Timer { id: laserTimer; interval: 280; onTriggered: game.laserReady = true }
+  // A caught ball goes by itself after a moment.
+  Timer { id: catchTimer; interval: 3000; onTriggered: if (game.phase === "play" && game.anyStuck()) game.releaseStuck() }
 
   // Pause when the window loses focus mid-rally.
   Connections {
@@ -219,13 +412,18 @@ FocusScope {
   }
 
   Keys.onPressed: function (e) {
-    if (e.isAutoRepeat) { e.accepted = true; return }
+    if (e.isAutoRepeat) {
+      // Holding Space keeps the laser firing.
+      if (e.key === Qt.Key_Space && phase === "play" && paddleMode === "laser") fireLaser()
+      e.accepted = true
+      return
+    }
     switch (e.key) {
     case Qt.Key_Left: case Qt.Key_A: leftHeld = true; break
     case Qt.Key_Right: case Qt.Key_D: rightHeld = true; break
-    case Qt.Key_Space: if (phase === "serve") launch(); else togglePause(); break
+    case Qt.Key_Space: action(true); break
     case Qt.Key_P: togglePause(); break
-    case Qt.Key_Return: case Qt.Key_Enter: if (phase === "over") newGame(); else if (phase === "serve") launch(); break
+    case Qt.Key_Return: case Qt.Key_Enter: if (phase === "over") newGame(); else action(false); break
     case Qt.Key_Escape: quitRequested(); break
     default: return
     }
@@ -270,6 +468,17 @@ FocusScope {
         anchors.verticalCenter: parent.verticalCenter
         anchors.right: parent.right; anchors.rightMargin: 18
         spacing: 8
+        Text {
+          visible: game.paddleMode !== ""
+          anchors.verticalCenter: parent.verticalCenter
+          text: game.paddleMode === "" ? "" : PowerUps.byId(game.paddleMode).label
+          color: {
+            var p = PowerUps.byId(game.paddleMode)
+            return p ? game.color(p.color, p.fallback) : "transparent"
+          }
+          font.pixelSize: 14; font.bold: true; font.family: "monospace"
+          rightPadding: 8
+        }
         Repeater {
           model: game.lives
           delegate: Rectangle { width: 14; height: 14; radius: 7; color: game.color("accent", "#7aa2f7") }
@@ -307,19 +516,73 @@ FocusScope {
       }
     }
 
-    // Paddle
+    // Capsules
+    Repeater {
+      id: capsuleView
+      model: game.capsules.length
+      delegate: Rectangle {
+        id: capsule
+        required property int index
+        readonly property var p: PowerUps.byId(game.capsuleAt(index).type)
+        x: game.capsuleAt(index).x; y: game.capsuleAt(index).y
+        width: game.capsuleW; height: game.capsuleH
+        radius: height / 2
+        color: p ? game.color(p.color, p.fallback) : "transparent"
+        border.width: 2
+        border.color: game.color("bright_foreground", "#c0caf5")
+        Text {
+          anchors.centerIn: parent
+          text: capsule.p ? capsule.p.label : ""
+          color: game.color("dark_background", "#13141c")
+          font.pixelSize: 11; font.bold: true; font.family: "monospace"
+        }
+      }
+    }
+
+    // Laser bolts
+    Repeater {
+      model: game.bolts.length
+      delegate: Rectangle {
+        required property int index
+        x: game.boltAt(index).x; y: game.boltAt(index).y
+        width: game.boltW; height: game.boltH
+        radius: 2
+        color: game.color("red", "#f7768e")
+      }
+    }
+
+    // Paddle, colored by its mode; the laser adds a cannon at each end.
     Rectangle {
+      id: paddle
       x: game.paddleX; y: game.paddleY
       width: game.paddleW; height: game.paddleH
       radius: game.paddleH / 2
-      color: game.color("accent", "#7aa2f7")
+      color: game.paddleMode === "catch" ? game.color("green", "#9ece6a")
+           : game.paddleMode === "laser" ? game.color("red", "#f7768e")
+           : game.color("accent", "#7aa2f7")
+      Behavior on width { NumberAnimation { duration: 120 } }
+      Repeater {
+        model: game.paddleMode === "laser" ? 2 : 0
+        delegate: Rectangle {
+          required property int index
+          width: 6; height: 8; radius: 1
+          y: -6
+          x: index === 0 ? 4 : paddle.width - 10
+          color: game.color("bright_foreground", "#c0caf5")
+        }
+      }
     }
 
-    // Ball
-    Rectangle {
-      x: game.ballX - game.ballR; y: game.ballY - game.ballR
-      width: game.ballR * 2; height: width; radius: game.ballR
-      color: game.color("bright_foreground", "#c0caf5")
+    // Balls
+    Repeater {
+      id: ballView
+      model: game.balls.length
+      delegate: Rectangle {
+        required property int index
+        x: game.ballAt(index).x - game.ballR; y: game.ballAt(index).y - game.ballR
+        width: game.ballR * 2; height: width; radius: game.ballR
+        color: game.color("bright_foreground", "#c0caf5")
+      }
     }
 
     // Messages. Paused and game-over messages get a backdrop so a frozen ball
@@ -354,7 +617,7 @@ FocusScope {
         anchors.horizontalCenter: parent.horizontalCenter
         text: game.phase === "over" ? "Score " + game.score + (game.beatHigh ? "  ·  new high score!" : "") + "\nEnter to play again  ·  Esc to quit"
             : game.phase === "paused" ? "P or Space to resume  ·  Esc to quit"
-            : game.phase === "serve" ? "Space or click to launch  ·  ← → or mouse to move  ·  P pause" : ""
+            : game.phase === "serve" ? "Space or click to launch  ·  ← → or mouse to move  ·  P pause\nCatch the falling capsules for power-ups" : ""
         horizontalAlignment: Text.AlignHCenter
         color: game.color("foreground", "#a9b1d6")
         font.pixelSize: 16; font.family: "monospace"
@@ -368,9 +631,8 @@ FocusScope {
       onPositionChanged: function (m) { game.mouseTarget = m.x - game.paddleW / 2 }
       onClicked: {
         game.forceActiveFocus()
-        if (game.phase === "serve") game.launch()
-        else if (game.phase === "paused") game.phase = "play"
-        else if (game.phase === "over") game.newGame()
+        if (game.phase === "over") game.newGame()
+        else game.action(false)
       }
     }
   }

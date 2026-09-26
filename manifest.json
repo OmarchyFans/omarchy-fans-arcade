@@ -2,10 +2,10 @@
   "schemaVersion": 1,
   "id": "fans.omarchy.arcade",
   "name": "Arcade",
-  "version": "0.2.0",
+  "version": "0.3.0",
   "author": "modpunk (omarchy.fans)",
   "license": "MIT",
-  "description": "Arcade games from your Omarchy bar. Brick Blitz, an original brick-breaker, plays the moment you install, with nothing else needed. Pac-Man, Galaga and Super Street Fighter II launch in MAME from your own ROM files: Arcade installs MAME for you on first play, checks your ROMs and tells you exactly what is missing. It never downloads or links to games. Free, MIT licensed, no account. An Omarchy.Fans product by ModPunk.",
+  "description": "Arcade games from your Omarchy bar. Brick Blitz, an original brick-breaker with power-ups (wide paddle, catch, laser, slow, multi-ball, extra ball, warp), plays the moment you install, with nothing else needed. Pac-Man, Galaga and Super Street Fighter II launch in MAME from your own ROM files: Arcade installs MAME for you on first play, checks your ROMs and tells you exactly what is missing. It never downloads or links to games. Free, MIT licensed, no account. An Omarchy.Fans product by ModPunk.",
   "kinds": [
     "bar-widget"
   ],

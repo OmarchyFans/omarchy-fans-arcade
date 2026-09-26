@@ -81,6 +81,12 @@ ShellRoot {
       anchors.margins: 12
       focus: true
       theme: root.theme
+      // ARCADE_BRICK_DROP=0..1 sets how often a broken brick drops a power-up
+      // (for trying them out; the bar never sets it).
+      dropChance: {
+        var v = parseFloat(Quickshell.env("ARCADE_BRICK_DROP") || "")
+        return isNaN(v) ? 0.18 : Math.max(0, Math.min(1, v))
+      }
       onQuitRequested: root.quit()
       onNewHighScore: saveTimer.restart()
       onPhaseChanged: if (phase === "over") root.saveHigh()

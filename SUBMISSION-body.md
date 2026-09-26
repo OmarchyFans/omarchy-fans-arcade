@@ -19,7 +19,7 @@ arcade
 Arcade is an Omarchy.Fans product written by ModPunk, MIT licensed. It is a bar chip with a small game menu.
 
 What it does:
-- It plays Brick Blitz, an original brick-breaker written for Arcade in pure QML/JS: five layouts, tough bricks, and a high score saved in ~/.local/state/omarchy-arcade.
+- It plays Brick Blitz, an original brick-breaker written for Arcade in pure QML/JS: five layouts, tough bricks, power-up capsules (wide, catch, laser, slow, multi-ball, extra ball, warp), and a high score saved in ~/.local/state/omarchy-arcade.
 - It launches Pac-Man, Galaga and Super Street Fighter II in MAME from the user's own ROM files. Before starting a game it runs `mame -verifyroms` and names the missing or wrong file in a notification.
 
 How it differs from Omacade and Omarchy Breakout:
@@ -38,7 +38,7 @@ Capabilities the baseline scan will list, all by design:
 - **installer:** install.sh is optional (plugin add is enough). It creates Arcade's folders and, in a terminal, installs MAME as above. It is idempotent. uninstall.sh removes Arcade's folders, keeps the high score unless --purge, and never touches ROMs or MAME.
 - **network (package):** installing MAME downloads it through pacman from the user's configured Arch mirrors.
 
-Testing: tests/run.sh runs offline against a stub MAME, a stub notify-send and a stub quickshell. It covers lint, marketplace layout rules, every CLI path, install/uninstall, the update helper against file:// fixtures, and 35 Brick Blitz rules run headless. CI runs it on every push.
+Testing: tests/run.sh runs offline against a stub MAME, a stub notify-send and a stub quickshell. It covers lint, marketplace layout rules, every CLI path, install/uninstall, the update helper against file:// fixtures, and Brick Blitz's game rules (power-ups included) run headless. CI runs it on every push.
 
 ### Submission checklist
 

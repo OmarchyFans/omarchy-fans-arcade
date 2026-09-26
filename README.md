@@ -40,7 +40,8 @@ touches your ROM folder.
 | Key | Action |
 |---|---|
 | ← → or A D, or the mouse | move the paddle |
-| Space or click | launch the ball |
+| Space or click | launch the ball, let a caught ball go, or fire the laser (hold Space to keep firing) |
+| Space, with nothing to launch or fire | pause |
 | P | pause |
 | Enter | play again after a game over |
 | Esc, or close the window | quit |
@@ -48,6 +49,26 @@ touches your ROM folder.
 - There are five layouts. After the last one they start over, a little faster.
 - Tough bricks take two or three hits.
 - Clearing a level gives you an extra ball, up to five.
+
+### Power-ups
+
+Broken bricks sometimes drop a capsule. Catch it with the paddle to use it:
+
+| Capsule | What it does |
+|---|---|
+| **WIDE** | a wider paddle |
+| **CATCH** | the ball sticks to the paddle; Space or a click sends it off, aimed by where it sits |
+| **LASER** | Space or a click fires two bolts that break bricks |
+| **SLOW** | slows the ball down |
+| **MULTI** | the ball splits into three |
+| **+1** | an extra ball in reserve |
+| **WARP** | skip straight to the next level |
+
+- WIDE, CATCH and LASER change the paddle, and only one can be active at a time: a new
+  one replaces the old.
+- Only one capsule falls at a time, and none drop while you have more than one ball.
+- Losing your last ball ends every power-up.
+- Each capsule you catch scores 100.
 - Your high score is saved in `~/.local/state/omarchy-arcade/brick.json`.
 - The colors follow your current Omarchy theme.
 

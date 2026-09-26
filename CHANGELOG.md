@@ -1,5 +1,12 @@
 # Changelog
 
+## 0.3.0
+
+- Brick Blitz power-ups: broken bricks drop capsules you catch with the paddle.
+- WIDE paddle, CATCH (the ball sticks until you send it off) and LASER (Space fires bolts).
+- SLOW ball, MULTI-ball (one ball becomes three), +1 extra ball and WARP to the next level.
+- The HUD shows the active paddle power-up; losing your last ball ends them all.
+
 ## 0.2.0
 
 - MAME now installs itself: the first MAME game you pick opens a terminal that installs it, then starts the game.
