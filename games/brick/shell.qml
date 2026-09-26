@@ -1,6 +1,7 @@
 import QtQuick
 import Quickshell
 import Quickshell.Io
+import Quickshell.Hyprland
 
 // Brick Blitz runs as its own Quickshell process (bin/arcade: quickshell -n -p
 // game/shell.qml), never inside the Omarchy bar, so nothing it does can take the
@@ -93,5 +94,17 @@ ShellRoot {
       onNewHighScore: saveTimer.restart()
       onPhaseChanged: if (phase === "over") root.saveHigh()
     }
+  }
+
+  // While you're playing, keyboard focus stays in the game even when the mouse
+  // wanders over another window: Hyprland's focus follows the mouse, and losing
+  // focus pauses the game. Pausing, the end screens and closing the window release
+  // the grab, and so does clicking outside, which also pauses. See docs/GAMES.md.
+  readonly property bool playing: window.visible && ["serve", "play"].indexOf(game.phase) >= 0
+  onPlayingChanged: playGrab.active = playing
+  HyprlandFocusGrab {
+    id: playGrab
+    windows: [window]
+    onCleared: game.lostFocus()
   }
 }

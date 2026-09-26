@@ -59,6 +59,12 @@ It already does these things right; keep them:
   after the score stops climbing and flushed on game over and on quit.
 - **Closing the window quits the process** (`onVisibleChanged`). Quickshell
   doesn't exit when its last window closes.
+- **Focus is held during play.** Hyprland's focus follows the mouse, so without
+  this a mouse drifting over another window would steal focus and pause the game.
+  A `HyprlandFocusGrab` is active only while `game.phase` is one of the game's
+  in-play phases, never on title, pause or end screens. Clicking outside clears
+  the grab and calls `game.lostFocus()`. When you copy the block from Brick
+  Blitz's shell, set `playing` to your own game's play phases.
 
 ## Game.qml: the engine rules
 

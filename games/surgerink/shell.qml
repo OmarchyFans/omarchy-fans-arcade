@@ -1,6 +1,7 @@
 import QtQuick
 import Quickshell
 import Quickshell.Io
+import Quickshell.Hyprland
 
 // Surge Rink runs as its own Quickshell process (bin/arcade: quickshell -n -p
 // games/surgerink/shell.qml), never inside the Omarchy bar, so nothing it does can
@@ -86,5 +87,17 @@ ShellRoot {
       // A run's score is final when it ends, and banked between matches.
       onPhaseChanged: if (phase === "over" || phase === "won") root.saveHigh()
     }
+  }
+
+  // While you're playing, keyboard focus stays in the game even when the mouse
+  // wanders over another window: Hyprland's focus follows the mouse, and losing
+  // focus pauses the game. Pausing, the end screens and closing the window release
+  // the grab, and so does clicking outside, which also pauses. See docs/GAMES.md.
+  readonly property bool playing: window.visible && ["serve", "play", "goal"].indexOf(game.phase) >= 0
+  onPlayingChanged: playGrab.active = playing
+  HyprlandFocusGrab {
+    id: playGrab
+    windows: [window]
+    onCleared: game.lostFocus()
   }
 }
