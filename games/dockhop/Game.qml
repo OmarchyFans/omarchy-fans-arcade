@@ -56,10 +56,22 @@ FocusScope {
   property var rng: ({ s: 1 })
   property var lanes: Lanes.lanesFor(1)
   property var objects: []                            // { row, x, len, type }
-  property real padClock: 0                           // drives every flicker pad lane
+  // padClock drives every flicker pad lane. It's physics, advanced every 1/240 s
+  // substep in step(); drawPadClock is the once-per-frame copy publish() takes of
+  // it, which is what the pads are actually drawn from (GAMES.md rule 5 — a plain
+  // property read straight from a delegate binding repaints every time it
+  // changes, so an unpublished padClock would repaint the pads up to 4x more
+  // often than the screen does).
+  property real padClock: 0
+  property real drawPadClock: 0
 
-  property real heroX: startX()                       // px, center
-  property real heroY: rowCenter(Lanes.START_ROW)     // px, center (drawn)
+  // heroX/heroY are the bot's physics position, written every substep by step();
+  // drawHeroX/drawHeroY are publish()'s once-per-frame copies, and the only ones
+  // heroItem below is drawn from (same rule 5 reasoning as padClock above).
+  property real heroX: startX()                       // px, center (physics)
+  property real heroY: rowCenter(Lanes.START_ROW)     // px, center (physics)
+  property real drawHeroX: startX()                   // px, center (drawn; see publish())
+  property real drawHeroY: rowCenter(Lanes.START_ROW) // px, center (drawn; see publish())
   property int heroRow: Lanes.START_ROW               // the row it stands on (the one it left, mid-hop)
   property string facing: "up"
   property bool hopping: false
@@ -72,7 +84,8 @@ FocusScope {
   property var queued: null                           // one buffered hop { dc, dr }
   property real bumpT: 0                              // a blocked hop's little shake
 
-  property real timeLeft: Lanes.timeLimit(1)
+  property real timeLeft: Lanes.timeLimit(1)          // s left, physics (see step())
+  property real drawTimeLeft: Lanes.timeLimit(1)      // s left, drawn (see publish())
   property int bestRow: Lanes.START_ROW
   property real deathT: 0                             // > 0: crashed, respawning
   property string deathCause: ""                      // hit | fell | swept | time
@@ -99,28 +112,48 @@ FocusScope {
   function timeLimit() { return Lanes.timeLimit(level) }
   function flash(text) { banner = text; bannerTimer.restart() }
 
-  // A pad lane's state: "on", "warn" (blinking) or "off" (powered down).
+  // A pad lane's state: "on", "warn" (blinking) or "off" (powered down). Physics
+  // (platformUnder, below) always reads this live off padClock, so a bot's
+  // footing is checked against the real, current clock, not a throttled one.
   function padStateOf(r) {
     var l = lane(r)
     return l.pad ? Lanes.padState(padClock + l.padOffset) : "on"
+  }
+  // The same, but off drawPadClock: the once-per-frame copy the pads are
+  // painted with (GAMES.md rule 5), so they don't repaint on every substep.
+  function drawPadStateOf(r) {
+    var l = lane(r)
+    return l.pad ? Lanes.padState(drawPadClock + l.padOffset) : "on"
   }
 
   // Drawing reads the objects through these (see docs/GAMES.md, rule 5).
   readonly property var offField: ({ row: 0, x: -9999, len: 0, type: "" })
   function objAt(i) { return objects[i] || offField }
-  function publish() { objects = objects.slice() }
+  // Called once per frame (see the FrameAnimation below), never per substep:
+  // republishes the traffic array and copies the physics hero position, clock
+  // and pad clock into their drawn counterparts, so every drawing binding that
+  // reads them repaints once per frame instead of once per 1/240 s substep
+  // (GAMES.md rule 5).
+  function publish() {
+    objects = objects.slice()
+    drawHeroX = heroX
+    drawHeroY = heroY
+    drawTimeLeft = timeLeft
+    drawPadClock = padClock
+  }
 
   ListModel { id: docks }                             // { col, filled, parcel }
   readonly property alias dockModel: docks
   readonly property alias objView: objView
   readonly property alias heroItem: heroItem
+  readonly property alias hintText: text2 // the pause/ready/game-over hint line (tests/dockhop_test.qml)
 
   // ---- game flow ------------------------------------------------------------------
   function newGame(seedValue) {
     setSeed(seedValue === undefined ? Date.now() % 2147483647 : seedValue)
     level = 1; lives = 3; score = 0; beatHigh = false
     loadLevel()
-    flash("Shift 1 · " + Lanes.shiftName(1))
+    flash("Level 1 · " + Lanes.shiftName(1) + " shift")
   }
 
   function loadLevel() {
@@ -156,6 +189,10 @@ FocusScope {
   function pause() { if (phase === "play") phase = "paused" }
   function resume() { if (phase === "paused") phase = "play" }
   function togglePause() { if (phase === "play") pause(); else if (phase === "paused") resume() }
+  // What a click on the field does, by phase (same effect as Enter on GAME OVER
+  // and P/Space/Enter on PAUSED); a named function so the headless test can call
+  // it without simulating a real mouse click.
+  function click() { if (phase === "over") newGame(); else if (phase === "paused") resume() }
 
   // Crashed: a life is gone (and any parcel with it); respawn after a moment.
   function die(cause) {
@@ -194,7 +231,7 @@ FocusScope {
   function nextLevel() {
     level++
     loadLevel()
-    flash("Shift " + level + " · " + Lanes.shiftName(level))
+    flash("Level " + level + " · " + Lanes.shiftName(level) + " shift")
   }
 
   // ---- hopping ----------------------------------------------------------------
@@ -576,7 +613,7 @@ FocusScope {
         readonly property string kind: game.objAt(index).type
         readonly property int row: game.objAt(index).row
         readonly property int dir: game.lane(row).dir || 1
-        readonly property string pad: kind === "pad" ? game.padStateOf(row) : "on"
+        readonly property string pad: kind === "pad" ? game.drawPadStateOf(row) : "on"
         x: game.objAt(index).x
         y: game.rowTop(row)
         width: game.objAt(index).len
@@ -604,7 +641,7 @@ FocusScope {
           color: obj.pad === "off" ? "transparent" : game.color("cyan", "#7dcfff")
           border.width: 2
           border.color: game.color("cyan", "#7dcfff")
-          opacity: obj.pad === "off" ? 0.3 : obj.pad === "warn" ? (Math.floor(game.padClock * 8) % 2 ? 0.45 : 0.95) : 0.95
+          opacity: obj.pad === "off" ? 0.3 : obj.pad === "warn" ? (Math.floor(game.drawPadClock * 8) % 2 ? 0.45 : 0.95) : 0.95
           Rectangle {
             visible: obj.pad !== "off"
             anchors.centerIn: parent; width: parent.width * 0.6; height: 3; radius: 1
@@ -675,8 +712,8 @@ FocusScope {
       readonly property real lift: game.hopping ? Math.sin(Math.PI * game.hopT) : 0
       readonly property bool crashed: game.deathT > 0
       visible: game.clearT <= 0 && game.phase !== "over"
-      x: game.heroX - game.tile / 2 + (game.bumpT > 0 ? Math.sin(game.bumpT * 90) * 3 : 0)
-      y: game.heroY - game.tile / 2
+      x: game.drawHeroX - game.tile / 2 + (game.bumpT > 0 ? Math.sin(game.bumpT * 90) * 3 : 0)
+      y: game.drawHeroY - game.tile / 2
       width: game.tile; height: game.tile
 
       // Shadow on the ground; it stays put while the bot is in the air.
@@ -685,7 +722,7 @@ FocusScope {
         anchors.horizontalCenter: parent.horizontalCenter
         y: parent.height - 12
         width: parent.width * 0.55; height: 7; radius: 4
-        color: "black"; opacity: 0.35 - heroItem.lift * 0.15
+        color: Qt.darker(game.color("dark_background", "#13141c"), 1.6); opacity: 0.35 - heroItem.lift * 0.15
       }
       Item {
         id: bot
@@ -755,7 +792,7 @@ FocusScope {
       Text {
         anchors.centerIn: parent
         anchors.horizontalCenterOffset: 40
-        text: "SHIFT " + game.level + " · " + Lanes.shiftName(game.level).toUpperCase()
+        text: "LEVEL " + game.level + " · " + Lanes.shiftName(game.level).toUpperCase() + " SHIFT"
         color: game.color("accent", "#7aa2f7"); font.pixelSize: 15; font.bold: true; font.family: "monospace"
       }
       Row {
@@ -806,7 +843,7 @@ FocusScope {
         width: parent.width - 140; height: 10; radius: 5
         color: game.color("lighter_background", "#24283b")
         Rectangle {
-          readonly property real f: game.clamp(game.timeLeft / game.timeLimit(), 0, 1)
+          readonly property real f: game.clamp(game.drawTimeLeft / game.timeLimit(), 0, 1)
           width: parent.width * f; height: parent.height; radius: 5
           color: f > 0.5 ? game.color("green", "#9ece6a") : f > 0.25 ? game.color("yellow", "#e0af68") : game.color("red", "#f7768e")
         }
@@ -814,7 +851,7 @@ FocusScope {
       Text {
         anchors.verticalCenter: parent.verticalCenter
         anchors.right: parent.right; anchors.rightMargin: 12
-        text: Math.ceil(game.timeLeft) + "s"
+        text: Math.ceil(game.drawTimeLeft) + "s"
         color: game.color("bright_foreground", "#c0caf5"); font.pixelSize: 13; font.bold: true; font.family: "monospace"
       }
     }
@@ -828,7 +865,7 @@ FocusScope {
       color: game.color("dark_background", "#13141c")
       opacity: 0.92
       border.width: 1
-      border.color: game.color("accent", "#7aa2f7")
+      border.color: game.color("lighter_background", "#24283b")
     }
     Column {
       id: messages
@@ -848,16 +885,17 @@ FocusScope {
         font.pixelSize: game.phase === "play" ? 30 : 40; font.bold: true; font.family: "monospace"
       }
       Text {
+        id: text2
         anchors.horizontalCenter: parent.horizontalCenter
         text: game.phase === "over" ? "Score " + game.score + (game.beatHigh ? "  ·  new high score!" : "") + "\nEnter to play again  ·  Esc to quit"
-            : game.phase === "paused" ? "P to resume  ·  Esc to quit"
-            : game.phase === "ready" ? "Arrows or WASD hop  ·  Space boosts two tiles\nPark in all four bays  ·  ride pallets over the shaft\nGrab parcels on the strip for a bonus  ·  P pause" : ""
+            : game.phase === "paused" ? "P or Space to resume  ·  Esc to quit"
+            : game.phase === "ready" ? "Hop to start  ·  Arrows or WASD hop  ·  Space boosts two tiles  ·  P pause\nPark in all four bays  ·  ride pallets over the shaft  ·  grab parcels for a bonus" : ""
         horizontalAlignment: Text.AlignHCenter
         color: game.color("foreground", "#a9b1d6")
         font.pixelSize: 15; font.family: "monospace"
       }
     }
 
-    MouseArea { anchors.fill: parent; onClicked: game.forceActiveFocus() }
+    MouseArea { anchors.fill: parent; onClicked: { game.forceActiveFocus(); game.click() } }
   }
 }

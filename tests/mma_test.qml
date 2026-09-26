@@ -88,6 +88,25 @@ ShellRoot {
     for (var i = 0; i < item.children.length; i++) { var r = find(item.children[i], name); if (r) return r }
     return null
   }
+  // A CPU-vs-CPU fight to the end (or `cap` seconds of game time), at CPU level `lv`.
+  function cpuFight(a, b, seed, lv, cap) {
+    g.seed = seed
+    g.newGame()
+    g.startMatch("versus", a, b, 1)
+    f(g, 0).cpu = true; f(g, 1).cpu = true; g.cpuLevel = lv
+    var n = 0, steps = cap * 240
+    while (g.fighting() && n < steps) { g.step(1 / 240); n++ }
+    return { phase: g.phase, winner: g.result.winner, method: g.result.method, round: g.result.round }
+  }
+  // Height a Column's children take, laid out (the Column itself lays out lazily).
+  function stackHeight(col) {
+    var h = 0, n = 0
+    for (var i = 0; i < col.children.length; i++) {
+      var c = col.children[i]
+      if (c.visible && c.height > 0) { h += c.height; n++ }
+    }
+    return h + Math.max(0, n - 1) * col.spacing
+  }
   function tally(plan, extra, why, n) {
     var r = prng(99), c = 0
     for (var i = 0; i < n; i++) if (AI.decide(ctx(plan, extra), r).why === why) c++
@@ -460,5 +479,168 @@ ShellRoot {
     check("render: the drawn pose follows the fight to the ground",
           g.fighterView.itemAt(1).pose.state === "ground" && g.fighterView.itemAt(1).pose.rot < -40 && near(g.fighterView.itemAt(1).x, f(g, 1).x),
           g.fighterView.itemAt(1).pose.state)
+
+    // ---- the roster: invented, non-physical traits -------------------------------------
+    var seen = { hair: {}, pattern: {}, walkout: {}, name: {}, nick: {}, home: {}, special: {} }, stances = {}, lo = 1, hi = 0, bad = ""
+    var HAIR = ["topknot", "curls", "ponytail", "buzz", "mohawk", "braid", "undercut"]
+    var BEARD = ["none", "moustache", "stubble", "goatee"]
+    var PATTERN = ["band", "stripe", "split", "dots", "panel", "solid", "hoops"]
+    var WALKOUT = ["bow", "point", "gloves", "armsup", "flex", "fist", "calm"]
+    for (h = 0; h < Fighters.count(); h++) {
+      a = def(h)
+      if (HAIR.indexOf(a.hair) < 0 || BEARD.indexOf(a.beard) < 0 || PATTERN.indexOf(a.pattern) < 0 || WALKOUT.indexOf(a.walkout) < 0
+          || (a.stance !== "orthodox" && a.stance !== "southpaw")) bad += a.id + " "
+      seen.hair[a.hair] = 1; seen.pattern[a.pattern] = 1; seen.walkout[a.walkout] = 1
+      seen.name[a.name] = 1; seen.nick[a.nick] = 1; seen.home[a.home] = 1; seen.special[a.special.name] = 1
+      stances[a.stance] = (stances[a.stance] || 0) + 1
+      lo = Math.min(lo, a.skin); hi = Math.max(hi, a.skin)
+    }
+    check("roster: every fighter's hair, beard, trunks, stance and walkout are from the drawn sets", bad === "", bad)
+    check("roster: no two fighters share a hair style, trunks pattern, walkout, name, nickname, hometown or special",
+          Object.keys(seen.hair).length === 7 && Object.keys(seen.pattern).length === 7 && Object.keys(seen.walkout).length === 7
+          && Object.keys(seen.name).length === 7 && Object.keys(seen.nick).length === 7 && Object.keys(seen.home).length === 7
+          && Object.keys(seen.special).length === 7, JSON.stringify(seen))
+    check("roster: both stances are in it", stances.orthodox >= 2 && stances.southpaw >= 2, JSON.stringify(stances))
+    check("roster: skin tones still span light to deep (0.10 .. 0.95)", near(lo, 0.10) && near(hi, 0.95), lo + " .. " + hi)
+
+    // The submission artist: 30% of the way from her own numbers toward the
+    // average of the sambo grinder and the judo thrower.
+    var base = { power: 7, speed: 7, kicks: 7, clinch: 7, wrestling: 5, grappling: 10, cardio: 7, defense: 4 }
+    var baseF = { ko: 27, sub: 59, dec: 14 }
+    bad = ""
+    for (h = 0; h < Fighters.RATING_KEYS.length; h++) {
+      var k = Fighters.RATING_KEYS[h]
+      var want = Math.round((0.7 * base[k] + 0.3 * (def(brannoch).ratings[k] + def(tidewell).ratings[k]) / 2) * 10 + 1e-9) / 10   // half up (6.55 -> 6.6)
+      if (!near(def(quenby).ratings[k], want, 1e-9)) bad += k + " " + def(quenby).ratings[k] + "!=" + want + " "
+    }
+    for (k in baseF) {
+      want = Math.round(0.7 * baseF[k] + 0.3 * (def(brannoch).finishes[k] + def(tidewell).finishes[k]) / 2)
+      if (def(quenby).finishes[k] !== want) bad += k + " " + def(quenby).finishes[k] + "!=" + want + " "
+    }
+    check("the submission artist's ratings and split are blended 30% toward the sambo/judo average", bad === "", bad)
+    a = def(quenby).finishes
+    check("... her split sums to 100 and the select card shows it",
+          a.ko + a.sub + a.dec === 100 && Fighters.finishLine(def(quenby)) === "Finishes: 26% KO · 56% SUB · 18% DEC", Fighters.finishLine(def(quenby)))
+
+    // ---- render: stance, trunks, hair and the walkout ----------------------------------------
+    fight(g, brannoch, castellane)
+    g.publish()
+    a = find(g.fighterView.itemAt(0), "leadArm"); b = find(g.fighterView.itemAt(1), "leadArm")
+    check("render: an orthodox fighter's lead arm is drawn in front, a southpaw's behind the body",
+          a !== null && b !== null && a.z > 0 && b.z < 0, (a ? a.z : "none") + " / " + (b ? b.z : "none"))
+    a = find(g.fighterView.itemAt(0), "pattern-band"); b = find(g.fighterView.itemAt(1), "pattern-band")
+    check("render: each fighter wears their own trunks pattern (band on Brannoch, not on Castellane)",
+          a !== null && a.visible && b !== null && !b.visible && find(g.fighterView.itemAt(1), "pattern-stripe").visible)
+    a = find(g.fighterView.itemAt(0), "hair-topknot"); b = find(g.fighterView.itemAt(1), "hair-curls")
+    check("render: each fighter has their own hair (Brannoch's topknot, Castellane's curls)",
+          a !== null && a.visible && b !== null && b.visible && !find(g.fighterView.itemAt(0), "hair-curls").visible)
+
+    g.seed = 7
+    g.newGame()
+    g.startMatch("versus", brannoch, marrask, 1)
+    a = g.fighterView.itemAt(0).pose; b = g.fighterView.itemAt(1).pose
+    check("render: through the first round call each fighter holds their walkout (Brannoch bows, Marrask's arms go up)",
+          g.phase === "ready" && a.lean > 30 && b.aFu < -160 && b.aBu < -160, a.lean + " / " + b.aFu)
+    run(g, 2, function () { return g.phase === "play" })
+    g.publish()
+    a = g.fighterView.itemAt(0).pose; b = g.fighterView.itemAt(1).pose
+    check("render: ... and drops it when the fight starts", a.lean < 20 && b.aFu > -100, a.lean + " / " + b.aFu)
+    g.endRoundOnTime()
+    run(g, 5, function () { return g.phase === "ready" })
+    g.publish()
+    check("render: ... and doesn't walk out again before round 2", g.round === 2 && g.phase === "ready" && g.fighterView.itemAt(0).pose.lean < 20,
+          g.round + " " + g.phase + " " + g.fighterView.itemAt(0).pose.lean)
+
+    // ---- keys: pause and resume ---------------------------------------------------------------
+    fight(g, brannoch, castellane)
+    g.keyDown(Qt.Key_P, false)
+    check("keys: P pauses a fight", g.phase === "paused", g.phase)
+    g.keyDown(Qt.Key_Space, false)
+    check("keys: Space resumes it", g.phase === "play", g.phase)
+    g.keyDown(Qt.Key_P, false); g.keyDown(Qt.Key_Return, false)
+    check("keys: ... and so does Enter, without firing player 2's special", g.phase === "play" && f(g, 1).state === "idle", g.phase + " " + f(g, 1).state)
+    g.keyDown(Qt.Key_Space, false)
+    check("keys: Space in a fight doesn't pause", g.phase === "play", g.phase)
+
+    // ---- HUD text ------------------------------------------------------------------------------
+    ladder(g, brannoch)
+    g.score = 99999; g.highScore = 99999
+    x = find(g.hudView, "hud-score")
+    check("HUD: the score line reads SCORE n  ·  HIGH n", x !== null && x.visible && x.text === "SCORE 99999  ·  HIGH 99999", x ? x.text : "none")
+    check("HUD: ... at 13-14 px in bright_foreground", x !== null && x.font.pixelSize >= 13 && x.font.pixelSize <= 14
+          && Qt.colorEqual(x.color, g.color("bright_foreground", "#c0caf5")), x ? x.font.pixelSize : "none")
+    a = find(g.hudView, "panel-0"); b = find(g.hudView, "panel-1")
+    check("HUD: ... and a 5-digit score fits between the two fighter panels",
+          x !== null && a !== null && b !== null && x.x >= a.x + a.width && x.x + x.implicitWidth <= b.x,
+          x && a && b ? a.x + a.width + " <= " + x.x + " + " + x.implicitWidth + " <= " + b.x : "none")
+    fight(g, brannoch, castellane)
+    check("HUD: no score line in a 2-player fight (nothing scores)", !find(g.hudView, "hud-score").visible)
+
+    fight(g, brannoch, castellane)
+    g.startGround(0, "mount")
+    g.publish()
+    a = find(g.hudView, "hint-0"); b = find(g.hudView, "hint-1")
+    check("HUD: both players' ground hints show, neither cut off",
+          a !== null && b !== null && a.visible && b.visible && a.text.length > 60 && b.text.length > 40
+          && !a.truncated && !b.truncated && a.implicitWidth <= a.width + 0.5 && b.implicitWidth <= b.width + 0.5,
+          a ? a.width + "/" + a.implicitWidth + " " + b.width + "/" + b.implicitWidth : "none")
+    check("HUD: ... each on its own line inside the field",
+          a !== null && b !== null && a.y + a.height <= b.y + 0.5 && b.y + b.height <= g.fieldH && a.x >= 0 && b.x + b.width <= g.fieldW,
+          a ? a.y + "+" + a.height + " / " + b.y + "+" + b.height : "none")
+
+    fight(g, brannoch, castellane)
+    g.togglePause()
+    x = find(g.hudView, "end-sub")
+    check("PAUSED reads 'P or Space to resume  ·  Esc to quit'", x !== null && x.visible && x.text === "P or Space to resume  ·  Esc to quit", x ? x.text : "none")
+    fight(g, brannoch, castellane)
+    g.finish(0, "KO", "PUNCHES")
+    g.togglePause()
+    x = find(g.hudView, "paused-over-result")
+    check("PAUSED over the result card reads 'PAUSED  ·  P or Space to resume'", x !== null && x.visible && x.text === "PAUSED  ·  P or Space to resume", x ? x.text : "none")
+    ladder(g, brannoch)
+    g.highScore = 0
+    g.addScore(500)
+    g.finish(1, "SUB", "ARMBAR")
+    g.afterFight()
+    x = find(g.hudView, "end-sub")
+    check("GAME OVER shows 'Score N  ·  new high score!' and double-spaced prompts",
+          g.phase === "over" && x !== null && x.text.indexOf("\nScore " + g.score + "  ·  new high score!\n") >= 0
+          && x.text.indexOf("Enter for the select screen  ·  Esc to quit") >= 0, x ? x.text : "none")
+
+    g.newGame()
+    x = find(g.hudView, "select-prompt")
+    check("select: the prompt uses double-spaced separators",
+          x !== null && x.visible && x.text === "↑↓ choose  ·  ←→ change  ·  F or Enter to fight  ·  P pause  ·  Esc quit", x ? x.text : "none")
+    x = find(g.hudView, "card-special-0")
+    check("select: the special's text is in the foreground colour, not orange",
+          x !== null && Qt.colorEqual(x.color, g.color("foreground", "#a9b1d6")), x ? x.color : "none")
+    bad = ""
+    for (h = 0; h < Fighters.count(); h++) {
+      g.selP1 = h; g.setPreview()
+      x = find(g.hudView, "card-col-0")
+      if (!x || stackHeight(x) > x.parent.height - 8) bad += def(h).id + " " + (x ? stackHeight(x) : "none") + " "
+    }
+    check("select: every fighter's stat card (with stance) fits its card", bad === "", bad)
+    g.selP1 = 0; g.setPreview()
+
+    // ---- CPU vs CPU: every matchup, two seeds ----------------------------------------------
+    var wins = [], games = []
+    for (h = 0; h < 7; h++) { wins.push(0); games.push(0) }
+    bad = ""
+    for (a = 0; a < 7; a++) for (b = 0; b < 7; b++) {
+      if (a === b) continue
+      for (var s = 1; s <= 2; s++) {
+        r = cpuFight(a, b, s * 101 + a * 7 + b, 5, 240)
+        games[a]++; games[b]++
+        if (r.winner === 0) wins[a]++
+        else if (r.winner === 1) wins[b]++
+        if (r.phase !== "result" || ["KO", "TKO", "SUB", "DEC"].indexOf(r.method) < 0 || r.round < 1 || r.round > 3)
+          bad += def(a).id + "-" + def(b).id + "/" + s + ":" + JSON.stringify(r) + " "
+      }
+    }
+    check("CPU vs CPU: every fight ends by KO/TKO, submission or decision within 3 rounds", bad === "", bad.slice(0, 200))
+    bad = ""
+    for (h = 0; h < 7; h++) if (wins[h] >= games[h]) bad += def(h).archetype + " "
+    check("CPU vs CPU: no archetype wins every matchup", bad === "", bad + " wins " + wins)
   }
 }

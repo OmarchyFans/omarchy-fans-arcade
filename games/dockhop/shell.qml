@@ -67,9 +67,15 @@ ShellRoot {
     id: window
     title: "Dockhop"
     color: root.theme.background || "#1a1b26"
-    implicitWidth: 804
-    implicitHeight: 776
-    minimumSize: Qt.size(420, 405)
+    // Sized to Dockhop's own fixed field (780x752 — 15x13 tiles plus the HUD and
+    // clock bar, see Game.qml), scaled up from the field like every other game's
+    // window: about 1.2x, capped at 720 tall so it still fits an 800px laptop
+    // screen with the bar, keeping the field's aspect ratio (752 x 1.2 would be
+    // 902, past the cap, so the height is the cap and the width follows the
+    // field's own 780:752 ratio: 720 * 780/752 ≈ 746). minimumSize is half that.
+    implicitWidth: 746
+    implicitHeight: 720
+    minimumSize: Qt.size(373, 360)
 
     // Quickshell keeps running when its last window closes; closing the window
     // (Super+W, the titlebar) ends the game.

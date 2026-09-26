@@ -46,8 +46,9 @@ Item {
     delegate: Item {
       id: side
       required property int index
+      objectName: "panel-" + index
       readonly property bool onRight: index === 1
-      readonly property real barW: 290
+      readonly property real barW: 270   // leaves the centre free for the clock and the score line
       x: onRight ? game.fieldW - 16 - barW : 16
       y: 8
       width: barW; height: 84
@@ -129,14 +130,23 @@ Item {
     }
   }
   Text {
+    objectName: "hud-round"
     visible: hud.inFight
     anchors.horizontalCenter: parent.horizontalCenter
     y: 55
-    text: "ROUND " + game.round + "/" + game.maxRounds + "\n" + (game.mode === "cpu"
-      ? "FIGHT " + game.stage + "/" + Fighters.LADDER + " · LV " + game.cpuLevel + " · " + game.score + " · HI " + game.highScore
+    text: "ROUND " + game.round + "/" + game.maxRounds + " · " + (game.mode === "cpu"
+      ? "FIGHT " + game.stage + "/" + Fighters.LADDER + " · LV " + game.cpuLevel
       : "P1 " + game.tallyP1 + " – " + game.tallyP2 + " P2")
-    horizontalAlignment: Text.AlignHCenter
-    color: hud.fg; font.pixelSize: 10; font.family: hud.mono; lineHeight: 0.95
+    color: hud.fg; font.pixelSize: 10; font.family: hud.mono
+  }
+  // Score and high score (1 player only: nothing scores in a 2-player fight)
+  Text {
+    objectName: "hud-score"
+    visible: hud.inFight && game.mode === "cpu"
+    anchors.horizontalCenter: parent.horizontalCenter
+    y: 70
+    text: "SCORE " + game.score + "  ·  HIGH " + game.highScore
+    color: hud.bright; font.pixelSize: 13; font.bold: true; font.family: hud.mono
   }
 
   // Where the fight is
@@ -174,16 +184,18 @@ Item {
     }
   }
 
-  // What each player can do right now (clinch, ground, submission)
+  // What each player can do right now (clinch, ground, submission). Each gets
+  // its own line, P1 above P2, so neither has to share the width with the other.
   Repeater {
     model: hud.inFight ? 2 : 0
     delegate: Text {
       required property int index
       readonly property string hint: game.hintFor(index)
+      objectName: "hint-" + index
       visible: hint !== "" && !game.fighterAt(index).cpu
       x: index === 0 ? 12 : game.fieldW - 12 - width
-      y: game.fieldH - 20
-      width: Math.min(implicitWidth, 380)
+      y: game.fieldH - (index === 0 ? 32 : 17)
+      width: Math.min(implicitWidth, game.fieldW - 24)
       elide: Text.ElideRight
       text: hint
       color: hud.fg; opacity: 0.8; font.pixelSize: 10; font.family: hud.mono
@@ -250,7 +262,8 @@ Item {
       Text {
         anchors.horizontalCenter: parent.horizontalCenter
         topPadding: 2
-        text: "↑↓ choose · ←→ change · F or Enter to fight · P pause · Esc quits"
+        objectName: "select-prompt"
+        text: "↑↓ choose  ·  ←→ change  ·  F or Enter to fight  ·  P pause  ·  Esc quit"
         color: hud.fg; font.pixelSize: 11; font.family: hud.mono
       }
       Text {
@@ -278,6 +291,7 @@ Item {
       color: hud.panel; opacity: 0.94
       border.width: 2; border.color: game.color(def.colorKey, def.colorFb)
       Column {
+        objectName: "card-col-" + card.index
         x: 10; y: 8; width: parent.width - 20
         spacing: 2
         Text {
@@ -292,7 +306,7 @@ Item {
         }
         Text {
           width: parent.width; wrapMode: Text.WordWrap
-          text: card.def.archetype.toUpperCase() + ": " + card.def.style
+          text: card.def.archetype.toUpperCase() + ", " + card.def.stance.toUpperCase() + ": " + card.def.style
           color: hud.fg; font.pixelSize: 10; font.family: hud.mono
         }
         Repeater {
@@ -315,9 +329,10 @@ Item {
           color: hud.bright; font.pixelSize: 10; font.family: hud.mono
         }
         Text {
+          objectName: "card-special-" + card.index
           width: parent.width; wrapMode: Text.WordWrap
           text: "SPECIAL " + card.def.special.name.toUpperCase() + ": " + card.def.special.hint
-          color: game.color("orange", "#ff9e64"); font.pixelSize: 10; font.family: hud.mono
+          color: hud.fg; font.pixelSize: 10; font.family: hud.mono
         }
       }
     }
@@ -390,14 +405,15 @@ Item {
       color: hud.bright; font.pixelSize: 40; font.bold: true; font.family: hud.mono
     }
     Text {
+      objectName: "end-sub"
       anchors.horizontalCenter: parent.horizontalCenter
       horizontalAlignment: Text.AlignHCenter
       text: {
-        if (game.phase === "paused") return "P to resume · Esc to quit"
-        var tail = "\nEnter for the select screen · Esc to quit"
+        if (game.phase === "paused") return "P or Space to resume  ·  Esc to quit"
+        var tail = "\nEnter for the select screen  ·  Esc to quit"
         if (game.mode === "cpu")
           return (game.champion ? "All " + Fighters.LADDER + " fights won" : "Lost at fight " + game.stage + " of " + Fighters.LADDER)
-            + "\nScore " + game.score + (game.beatHigh ? " · new high score!" : " · best " + game.highScore) + tail
+            + "\nScore " + game.score + (game.beatHigh ? "  ·  new high score!" : "  ·  best " + game.highScore) + tail
         return "Fights  P1 " + game.tallyP1 + " – " + game.tallyP2 + " P2" + tail
       }
       color: hud.fg; font.pixelSize: 16; font.family: hud.mono
@@ -408,7 +424,8 @@ Item {
     visible: game.phase === "paused" && game.pausedFrom === "result"
     anchors.horizontalCenter: parent.horizontalCenter
     y: resultCard.y - 44
-    text: "PAUSED · P to resume"
+    objectName: "paused-over-result"
+    text: "PAUSED  ·  P or Space to resume"
     color: hud.bright; style: Text.Outline; styleColor: hud.panel
     font.pixelSize: 26; font.bold: true; font.family: hud.mono
   }

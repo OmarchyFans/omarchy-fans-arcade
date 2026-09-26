@@ -50,7 +50,9 @@ ShellRoot {
     Game { id: g; anchors.fill: parent; seed: 1234 }
   }
 
-  FileView { id: out; path: Quickshell.env("ARCADE_TEST_OUT") || "/dev/null"; printErrors: false }
+  // run.sh stages game.json next to this file.
+  FileView { id: gameJson; path: Qt.resolvedUrl("game.json").toString().replace(/^file:\/\//, ""); blockLoading: true; printErrors: false }
+  FileView { id: out;path: Quickshell.env("ARCADE_TEST_OUT") || "/dev/null"; printErrors: false }
 
   Timer {
     interval: 50; running: true
@@ -110,6 +112,7 @@ ShellRoot {
     Physics.strike(p, s, t, 1)
     var plain = p.vx
     check("a moving striker hands the puck its speed (x1.9)", Math.abs(plain - 570) < 1, plain)
+    s = { x: 300, y: t.cy, vx: 300, vy: 0 }   // a new contact
     p = mk(300 + t.r + t.sr - 1, t.cy, 0, 0)
     Physics.strike(p, s, t, 1.9)
     check("a surge multiplier makes the strike faster", p.vx > plain * 1.8, p.vx)
@@ -326,6 +329,219 @@ ShellRoot {
     versus()
     check("2P: the arrows and Enter are P2's", g.keyAction(Qt.Key_Up).player === 1 && g.keyAction(Qt.Key_Return).act === "surge"
           && g.keyAction(Qt.Key_W).player === 0)
+
+    // ---- pinned puck: a striker leaning on it against a rail, corner or post -------------
+    // Striker i at (sx, sy), puck at (px, py) at rest overlapping it, the keys in
+    // `keys` held (pushing toward the rail). Returns the state after `secs`.
+    function pin(i, sx, sy, px, py, keys, secs) {
+      versus(); park(); g.phase = "play"
+      g.strikers[i].x = sx; g.strikers[i].y = sy
+      put(px, py, 0, 0)
+      for (var k = 0; k < keys.length; k++) g.press(i, keys[k])
+      var top = 0
+      run(secs, function () { top = Math.max(top, spd(g.puck())); return g.phase !== "play" })
+      var q = g.puck(), st = g.strikers[i]
+      var res = { d: Math.hypot(q.x - st.x, q.y - st.y), v: spd(q), top: top, q: q, phase: g.phase }
+      for (k = 0; k < keys.length; k++) g.release(i, keys[k])
+      return res
+    }
+    function onTable(q) {
+      return q.y >= t.T + t.r - 0.01 && q.y <= t.B - t.r + 0.01
+          && (Math.abs(q.y - t.cy) < t.mouth || (q.x >= t.L + t.r - 0.01 && q.x <= t.R - t.r + 0.01))
+    }
+    var minD = t.r + t.sr - 0.01, pr
+    pr = pin(0, 300, t.T + t.sr, 300, t.T + t.r, ["up"], 0.05)
+    check("pinned on the top rail: the striker gives way, no overlap", pr.d >= minD && onTable(pr.q) && pr.v < 200, pr.d.toFixed(2) + " v=" + pr.v.toFixed(0))
+    pr = pin(0, 300, t.B - t.sr, 300, t.B - t.r, ["down"], 0.05)
+    check("pinned on the bottom rail: the striker gives way, no overlap", pr.d >= minD && onTable(pr.q) && pr.v < 200, pr.d.toFixed(2) + " v=" + pr.v.toFixed(0))
+    pr = pin(0, t.L + t.sr, 200, t.L + t.r, 200, ["left"], 0.05)
+    check("pinned on the left end rail: the striker gives way, no overlap", pr.d >= minD && onTable(pr.q) && pr.v < 200, pr.d.toFixed(2) + " v=" + pr.v.toFixed(0))
+    pr = pin(1, t.R - t.sr, 470, t.R - t.r, 470, ["right"], 0.05)
+    check("pinned on the right end rail: the striker gives way, no overlap", pr.d >= minD && onTable(pr.q) && pr.v < 200, pr.d.toFixed(2) + " v=" + pr.v.toFixed(0))
+    pr = pin(0, t.L + t.sr, t.T + t.sr, t.L + t.r, t.T + t.r, ["up", "left"], 0.05)
+    check("pinned in a corner: the overlap resolves at once", pr.d >= minD && onTable(pr.q) && pr.v < 200, pr.d.toFixed(2) + " v=" + pr.v.toFixed(0))
+    pr = pin(0, t.L + t.sr, t.B - t.sr, t.L + t.r, t.B - t.r, ["down", "left"], 0.4)
+    check("held into a corner for a while, the puck stays out and slow", pr.d >= minD && onTable(pr.q) && pr.top < 900, pr.d.toFixed(2) + " top=" + pr.top.toFixed(0))
+    // Dragged sideways along the rail with the puck under it: it used to be pumped
+    // to the speed cap every substep.
+    pr = pin(0, 290, t.T + t.sr, 300, t.T + t.r, ["right"], 0.3)
+    check("a sideways drag on a pinned puck doesn't pump its speed", pr.top < 900 && pr.d >= minD, "top=" + pr.top.toFixed(0) + " d=" + pr.d.toFixed(2))
+    run(0.5)
+    p = g.puck(); s = g.strikers[0]
+    check("after the drag the puck is not left inside the striker", Math.hypot(p.x - s.x, p.y - s.y) >= minD && spd(p) < 900,
+          Math.hypot(p.x - s.x, p.y - s.y).toFixed(2))
+    // The mouse drives a striker at up to 1500 px/s: pushed straight into a rail
+    // with the puck under it, the puck used to sit inside the striker at the cap.
+    function pinMouse(sx, sy, px, py, mx, my, secs) {
+      solo(0); park(); g.phase = "play"
+      g.strikers[0].x = sx; g.strikers[0].y = sy
+      put(px, py, 0, 0)
+      g.mouseMove(mx, my)
+      var top = 0
+      run(secs, function () { top = Math.max(top, spd(g.puck())); return g.phase !== "play" })
+      var q = g.puck(), st = g.strikers[0]
+      g.mouseActive = false
+      return { d: Math.hypot(q.x - st.x, q.y - st.y), v: spd(q), top: top, q: q }
+    }
+    pr = pinMouse(150, t.T + 60, 150, t.T + t.r + 2, 150, t.T, 0.3)
+    check("mouse-pinned on the top rail: no overlap and no speed pumped in", pr.d >= minD && onTable(pr.q) && pr.top < 300,
+          pr.d.toFixed(2) + " top=" + pr.top.toFixed(0))
+    pr = pinMouse(t.L + t.sr + 30, 200, t.L + t.r, 200, t.L, 200, 0.3)
+    check("mouse-pinned on the end rail: no overlap and no speed pumped in", pr.d >= minD && onTable(pr.q) && pr.top < 300,
+          pr.d.toFixed(2) + " top=" + pr.top.toFixed(0))
+    pr = pinMouse(t.L + t.sr + 30, t.B - t.sr - 30, t.L + t.r + 1, t.B - t.r - 1, t.L, t.B, 0.3)
+    check("mouse-pinned in a corner: no overlap and no speed pumped in", pr.d >= minD && onTable(pr.q) && pr.top < 300,
+          pr.d.toFixed(2) + " top=" + pr.top.toFixed(0))
+    // A puck wedged against a goal post (overlapping it, just inside the mouth),
+    // leaned on from below: the post turns it into the goal or back into the
+    // mouth. It used to be shoved through the post onto the rail beside the mouth.
+    var post = { x: t.L, y: t.cy - t.mouth }
+    pr = pin(0, t.L + t.sr, post.y + 34, t.L + 6, post.y + 4, ["up"], 0.1)
+    check("a puck wedged at a goal post is freed, never through the post",
+          Math.hypot(pr.q.x - post.x, pr.q.y - post.y) >= t.r - 0.01 && (pr.d >= minD || pr.phase === "goal")
+          && (pr.phase === "goal" || Math.abs(pr.q.y - t.cy) < t.mouth) && pr.top < 1000,
+          Math.hypot(pr.q.x - post.x, pr.q.y - post.y).toFixed(2) + " d=" + pr.d.toFixed(2) + " y=" + pr.q.y.toFixed(1) + " " + pr.phase)
+
+    // One velocity transfer per contact: a striker still touching the puck on the
+    // next substep only pushes it (no second restitution kick).
+    s = { x: 300, y: t.cy, vx: 300, vy: 0 }
+    p = mk(300 + t.r + t.sr - 1, t.cy, 0, 0)
+    var first = Physics.strike(p, s, t, 1)
+    p.x = 300 + t.r + t.sr - 1; p.vx = 0
+    var again = Physics.strike(p, s, t, 1.9)
+    check("a strike transfers velocity once per contact, not every substep",
+          first && !again && Math.abs(p.vx - 300) < 1, again + " " + p.vx)
+
+    // Bug: a puck in the mouth band, near the goal line, pushed sideways out of the
+    // band had its x clamped to L + r, through the post. It must bounce off the post.
+    var bot = { x: t.L, y: t.cy + t.mouth }
+    p = mk(t.L + 3, t.cy + t.mouth + 3, 0, 600)
+    Physics.keepIn(p, t, t.cy + t.mouth - 16)
+    check("a puck pushed sideways out of the mouth bounces off the post, not through it",
+          p.y < t.cy + t.mouth && p.x < t.L + 12 && Math.hypot(p.x - bot.x, p.y - bot.y) >= t.r - 0.01 && p.vy < 0,
+          p.x.toFixed(1) + "," + p.y.toFixed(1) + " vy=" + p.vy.toFixed(0))
+    p = mk(t.L + 3, t.cy + t.mouth + 3, 0, 0)
+    Physics.keepIn(p, t, t.cy + t.mouth + 3)
+    check("a puck already on the rail side of the post is kept in front of the rail", p.x >= t.L + t.r - 0.01, p.x)
+
+    // ---- seeds: every match differs, newGame() keeps the seed it is given -----------------
+    g.seed = 55; g.newGame()
+    check("newGame() keeps the seed (the tests replay by it)", g.seed === 55, g.seed)
+    solo(0)
+    var seedA = g.seed
+    g.playAgain()
+    var seedB = g.seed
+    check("play again rolls a new seed", seedB !== seedA && g.phase === "serve", seedA + " -> " + seedB)
+    g.toMenu()
+    check("back to the menu rolls a new seed", g.seed !== seedB && g.phase === "select", seedB + " -> " + g.seed)
+
+    // ---- effects don't hang over the result ---------------------------------------------
+    versus(); park(); g.phase = "play"; g.goals1 = 6
+    put(840, t.cy, 800, 0)
+    g.burst(500, 300, 0, 8)
+    g.trail = [{ x: 500, y: 300, a: 1, side: 0 }, { x: 510, y: 300, a: 1, side: 0 }]
+    run(0.5, function () { return g.phase !== "play" })
+    g.publish()
+    check("sparks and the trail are cleared when the match ends",
+          g.phase === "over" && g.sparks.length === 0 && g.trail.length === 0 && g.sparkView.count === 0, g.phase + " " + g.sparks.length + "/" + g.trail.length)
+    g.burst(500, 300, 0, 3)
+    g.trail = [{ x: 500, y: 300, a: 1, side: 0 }, { x: 510, y: 300, a: 1, side: 0 }, { x: 520, y: 300, a: 1, side: 0 }]
+    g.publish()
+    check("no sparks or trail are drawn on the result screen",
+          g.sparkView.itemAt(0) && !g.sparkView.itemAt(0).visible && g.trailView.itemAt(0) && !g.trailView.itemAt(0).visible)
+    g.toMenu()
+    g.burst(500, 300, 0, 3); g.publish()
+    check("no sparks are drawn on the menu", g.phase === "select" && g.sparkView.itemAt(0) && !g.sparkView.itemAt(0).visible)
+    versus(); g.phase = "play"; g.burst(500, 300, 0, 3); g.publish()
+    check("sparks are drawn during play", g.sparkView.itemAt(0) && g.sparkView.itemAt(0).visible)
+
+    // ---- mouse and keys --------------------------------------------------------------------
+    versus()
+    g.press(0, "surge", Qt.Key_F)
+    g.mouseDown(300, 300); g.mouseUp()
+    check("2P: a mouse click doesn't cancel P1's keyboard surge", g.strikers[0].held.surge, g.strikers[0].held.surge)
+    g.release(0, "surge", Qt.Key_F)
+    g.mouseDown(300, 300)
+    check("2P: the mouse button doesn't surge anyone", !g.strikers[0].held.surge && !g.mouseActive)
+    solo(0)
+    g.press(0, "surge", Qt.Key_Space)
+    g.mouseDown(300, 300); g.mouseUp()
+    check("1P: letting go of the mouse keeps a surge key held", g.strikers[0].held.surge)
+    g.release(0, "surge", Qt.Key_Space)
+    g.mouseDown(300, 300)
+    var mouseSurge = g.strikers[0].held.surge
+    g.mouseUp()
+    check("1P: the mouse button surges while held", mouseSurge && !g.strikers[0].held.surge)
+    g.press(0, "right", Qt.Key_D); g.press(0, "right", Qt.Key_Right)
+    g.release(0, "right", Qt.Key_D)
+    var stillRight = g.strikers[0].held.right
+    g.release(0, "right", Qt.Key_Right)
+    check("1P: releasing D keeps moving right while Right is still down", stillRight && !g.strikers[0].held.right, stillRight)
+    g.press(0, "up", Qt.Key_W); g.press(0, "up", Qt.Key_Up)
+    g.lostFocus()
+    check("losing focus forgets every key, not just the flags",
+          !g.strikers[0].held.up && Object.keys(g.strikers[0].keys).length === 0, JSON.stringify(g.strikers[0].keys))
+
+    // The real key path: D and Right are tracked as two keys.
+    solo(0); g.phase = "play"
+    g.keyDown(Qt.Key_D, false); g.keyDown(Qt.Key_Right, false)
+    g.keyUp(Qt.Key_D, false)
+    stillRight = g.strikers[0].held.right
+    g.keyUp(Qt.Key_Right, false)
+    check("1P keys: letting go of D while Right is down keeps moving right", stillRight && !g.strikers[0].held.right, stillRight)
+
+    // A surged strike on a puck already coming in fast stays under the cap.
+    s = { x: 300, y: t.cy, vx: 0, vy: 0 }
+    p = mk(300 + t.r + t.sr - 1, t.cy, -1450, 0)
+    Physics.strike(p, s, t, 1.9)
+    check("a smash never sends the puck past the speed cap", spd(p) <= Physics.MAX_SPEED + 0.01 && p.vx > 0, spd(p))
+
+    // ---- pause keys ------------------------------------------------------------------------
+    var resumed = []
+    var resumeKeys = [Qt.Key_P, Qt.Key_Space, Qt.Key_Return, Qt.Key_Enter]
+    for (var rk = 0; rk < resumeKeys.length; rk++) {
+      versus(); g.phase = "play"; g.keyDown(Qt.Key_P, false)
+      var wasPaused = g.phase === "paused"
+      g.keyDown(resumeKeys[rk], false)
+      resumed.push(wasPaused && g.phase === "play")
+    }
+    check("paused: P, Space, Return and Enter all resume", resumed.join() === "true,true,true,true", resumed.join())
+    versus(); g.phase = "play"; g.keyDown(Qt.Key_P, false); g.keyDown(Qt.Key_W, false)
+    check("paused: a move key doesn't resume", g.phase === "paused", g.phase)
+
+    // ---- text and look ---------------------------------------------------------------------
+    function singleDot(txt) { return /[^ ] · |· [^ ]/.test(txt) }
+    g.newGame()
+    g.selMode = "versus"
+    var titleVs = g.messageBody
+    g.selMode = "cpu"
+    check("the title lines use double-spaced separators",
+          g.messageBody.indexOf("  ·  ") > 0 && !singleDot(g.messageBody) && !singleDot(titleVs) && g.messageBody.indexOf("P pause") > 0, g.messageBody)
+    versus(); g.phase = "play"; g.togglePause()
+    check("PAUSED reads 'P or Space to resume  ·  Esc to quit'", g.messageBody === "P or Space to resume  ·  Esc to quit", g.messageBody)
+    solo(0); g.goals2 = 6; park(); g.phase = "play"
+    put(120, t.cy, -800, 0)
+    run(0.5, function () { return g.phase !== "play" })
+    check("GAME OVER shows 'Score N' with double-spaced separators",
+          g.phase === "over" && g.messageBody.indexOf("  ·  Score 0") > 0 && !/score \d/.test(g.messageBody) && !singleDot(g.messageBody), g.messageBody)
+    solo(0); g.goals1 = 6; park(); g.phase = "play"
+    put(840, t.cy, 800, 0)
+    run(0.5, function () { return g.phase !== "play" })
+    check("MATCH WON shows 'Score N' with double-spaced separators",
+          g.phase === "won" && g.messageBody.indexOf("  ·  Score " + g.score) > 0 && !/score \d/.test(g.messageBody) && !singleDot(g.messageBody), g.messageBody)
+    check("the result sits on the house backdrop (opacity 0.92)", g.backdrop.visible && Math.abs(g.backdrop.opacity - 0.92) < 1e-6, g.backdrop.opacity)
+    var oldTheme = g.theme
+    g.theme = { background: "#202020", dark_background: "#101010" }
+    check("the field is dark_background, not the window's background",
+          Qt.colorEqual(g.fieldBg.color, "#101010") && g.fieldBg.radius === 6, g.fieldBg.color + " r=" + g.fieldBg.radius)
+    g.theme = oldTheme
+
+    // ---- game.json --------------------------------------------------------------------------
+    gameJson.reload()
+    var meta = {}
+    try { meta = JSON.parse(gameJson.text()) } catch (e) {}
+    check("game.json: note is 'built in' and the genre a lowercase phrase",
+          meta.note === "built in" && meta.genre === "air-hockey duel", meta.note + " / " + meta.genre)
 
     // ---- render rules --------------------------------------------------------------------
     versus(); g.phase = "play"; park()

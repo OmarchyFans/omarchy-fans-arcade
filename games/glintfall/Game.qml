@@ -460,10 +460,10 @@ FocusScope {
   function pressLeft() { leftHeld = true; dasDir = -1; dasTimer = dasDelay; move(-1, 0) }
   function pressRight() { rightHeld = true; dasDir = 1; dasTimer = dasDelay; move(1, 0) }
 
-  Keys.onPressed: function (e) {
-    // Key repeat is ours (dasDelay/dasRepeat in step), not the keyboard's.
-    if (e.isAutoRepeat) { e.accepted = true; return }
-    switch (e.key) {
+  // Handles one key; returns true when it did something (also used by the test
+  // to drive input without a real key event).
+  function handleKey(key) {
+    switch (key) {
     case Qt.Key_Left: case Qt.Key_A: pressLeft(); break
     case Qt.Key_Right: case Qt.Key_D: pressRight(); break
     case Qt.Key_Down: case Qt.Key_S: downHeld = true; softDrop(); break
@@ -478,13 +478,24 @@ FocusScope {
     case Qt.Key_P: togglePause(); break
     case Qt.Key_Return: case Qt.Key_Enter:
       if (phase === "ready") start()
-      else if (phase === "over") { newGame(); start() }
+      else if (phase === "over") newGame()
       else if (phase === "paused") resume()
       break
     case Qt.Key_Escape: quitRequested(); break
-    default: return
+    default: return false
     }
-    e.accepted = true
+    return true
+  }
+  Keys.onPressed: function (e) {
+    // Key repeat is ours (dasDelay/dasRepeat in step), not the keyboard's.
+    if (e.isAutoRepeat) { e.accepted = true; return }
+    if (handleKey(e.key)) e.accepted = true
+  }
+  // What a click on the field does; same landing spots as Enter/Space.
+  function clicked() {
+    if (phase === "ready") start()
+    else if (phase === "over") newGame()
+    else if (phase === "paused") resume()
   }
   Keys.onReleased: function (e) {
     if (e.isAutoRepeat) return
@@ -599,7 +610,7 @@ FocusScope {
         font.pixelSize: 30; font.bold: true; font.family: "monospace"; font.letterSpacing: 3
       }
       Stat { label: "SCORE"; value: "" + game.score }
-      Stat { label: "HIGH"; value: "" + game.highScore; tint: game.beatHigh ? game.color("yellow", "#e0af68") : game.color("foreground", "#a9b1d6") }
+      Stat { label: "HIGH"; value: "" + game.highScore; tint: game.beatHigh ? game.color("accent", "#7aa2f7") : game.color("foreground", "#a9b1d6") }
       Column {
         spacing: 6
         Text { text: "HOLD  (C)"; color: game.color("foreground", "#a9b1d6"); font.pixelSize: 12; font.family: "monospace"; font.letterSpacing: 2; opacity: 0.8 }
@@ -613,7 +624,7 @@ FocusScope {
       Text {
         width: 200
         text: game.banner
-        color: game.color("yellow", "#e0af68")
+        color: game.color("bright_foreground", "#c0caf5")
         font.pixelSize: 18; font.bold: true; font.family: "monospace"
         wrapMode: Text.WordWrap
       }
@@ -621,9 +632,9 @@ FocusScope {
     Text {
       x: 36; y: game.fieldH - 132
       width: 200
-      text: "← →  move\n↑ / X  turn   Z  back\n↓  soft drop\nSpace  hard drop\nC  hold   P  pause"
+      text: "← → / A D  move\n↑ W X  turn   Z  back\n↓ S  soft drop\nSpace  hard drop\nC  hold   P  pause"
       color: game.color("foreground", "#a9b1d6")
-      opacity: 0.6
+      opacity: 0.85
       font.pixelSize: 13; font.family: "monospace"
       lineHeight: 1.2
     }
@@ -722,7 +733,7 @@ FocusScope {
       color: game.color("dark_background", "#16161e")
       opacity: 0.92
       border.width: 1
-      border.color: game.color("accent", "#7aa2f7")
+      border.color: game.color("lighter_background", "#24283b")
     }
     Column {
       id: messages
@@ -741,8 +752,8 @@ FocusScope {
       Text {
         anchors.horizontalCenter: parent.horizontalCenter
         visible: text !== ""
-        text: game.phase === "over" ? "Score " + game.score + (game.beatHigh ? "\nnew high score!" : "") + "\nEnter to play again\nEsc to quit"
-            : game.phase === "paused" ? "P to resume\nEsc to quit"
+        text: game.phase === "over" ? "Score " + game.score + (game.beatHigh ? "  ·  new high score!" : "") + "\nEnter to play again  ·  Esc to quit"
+            : game.phase === "paused" ? "P or Space to resume  ·  Esc to quit"
             : game.phase === "ready" ? "Fill a row to clear it.\nGlints ◆ in a cleared row\nburst their neighbours.\n\nSpace or Enter to start" : ""
         horizontalAlignment: Text.AlignHCenter
         color: game.color("foreground", "#a9b1d6")
@@ -753,12 +764,7 @@ FocusScope {
 
     MouseArea {
       anchors.fill: parent
-      onClicked: {
-        game.forceActiveFocus()
-        if (game.phase === "ready") game.start()
-        else if (game.phase === "over") { game.newGame(); game.start() }
-        else if (game.phase === "paused") game.resume()
-      }
+      onClicked: { game.forceActiveFocus(); game.clicked() }
     }
   }
 }

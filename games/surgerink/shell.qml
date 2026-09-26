@@ -67,9 +67,9 @@ ShellRoot {
     id: window
     title: "Surge Rink"
     color: root.theme.background || "#1a1b26"
-    implicitWidth: 960
-    implicitHeight: 640
-    minimumSize: Qt.size(480, 320)
+    implicitWidth: 984
+    implicitHeight: 624
+    minimumSize: Qt.size(492, 312)
 
     // Quickshell keeps running when its last window closes; closing the window
     // (Super+W, the titlebar) ends the game.

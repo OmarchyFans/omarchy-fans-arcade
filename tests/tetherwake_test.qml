@@ -65,6 +65,9 @@ ShellRoot {
     // ---- a new game ------------------------------------------------------------
     g.newGame(7)
     check("new game waits in ready", g.phase === "ready", g.phase)
+    check("the ready screen names every move key, not just the arrows",
+          g.subtitleText.text.indexOf("A/D") >= 0 && g.subtitleText.text.indexOf("W") >= 0
+          && g.subtitleText.text.indexOf(" or S casts the tether") >= 0, g.subtitleText.text)
     check("three skiffs, wave 1, no score", g.lives === 3 && g.wave === 1 && g.score === 0, g.lives + "/" + g.wave + "/" + g.score)
     check("wave 1 is three slabs and no mines", g.debris.length === 3 && g.mines.length === 0
           && g.debris.every(function (x) { return x.size === 3 }), g.debris.length + "/" + g.mines.length)
@@ -79,6 +82,7 @@ ShellRoot {
     check("another seed lays it out differently", positions(g) !== p7)
     g.start()
     check("start plays, briefly shielded", g.phase === "play" && g.invuln > 0, g.phase)
+    check("the opening banner is Title case", g.banner === "Wave 1", g.banner)
 
     // ---- flying ------------------------------------------------------------------
     fresh(g)
@@ -189,6 +193,23 @@ ShellRoot {
     g.debris = []
     run(g, g.respawnDelay + 0.1)
     check("losing the last skiff ends the game", g.phase === "over" && g.lives === 0, g.phase)
+    g.score = 500
+    check("the game-over score line uses double-spaced separators, not a bare dot",
+          g.subtitleText.text.indexOf("Score 500  ·  Wave " + g.wave) === 0, g.subtitleText.text)
+
+    // House rule: Enter (or a click) on GAME OVER starts a new game and lands on
+    // the ready screen, not straight into play; a click on ready then starts play.
+    g.keyDown(Qt.Key_Return)
+    check("Enter on game over goes to ready, not play", g.phase === "ready" && g.score === 0, g.phase)
+
+    fresh(g)
+    g.lives = 1; g.makeDebris(3, 400, 300, 0, 0); g.step(1 / 240); g.debris = []
+    run(g, g.respawnDelay + 0.1)
+    g.score = 500
+    g.fieldClicked()
+    check("a click on game over also starts a new game", g.phase === "ready" && g.score === 0, g.phase)
+    g.fieldClicked()
+    check("a click on the ready screen starts play", g.phase === "play", g.phase)
 
     fresh(g)
     g.addScore(9990)
@@ -204,12 +225,27 @@ ShellRoot {
     g.fire()
     run(g, 1, function () { return g.interT > 0 })
     check("clearing the field ends the wave with a bonus", g.interT > 0 && g.score === before + 100 + 250, g.score - before)
+    check("the wave-clear banner is Title case", g.banner === "Wave 1 clear  +250", g.banner)
     run(g, g.waveDelay + 0.1)
     check("the next wave brings more debris and a mine", g.wave === 2 && g.debris.length === 4 && g.mines.length === 1,
           g.wave + ": " + g.debris.length + "/" + g.mines.length)
+    check("the new-wave banner is Title case", g.banner === "Wave 2", g.banner)
     var w1 = Space.wave(1), w3 = Space.wave(3), w4 = Space.wave(4), w8 = Space.wave(8)
     check("waves get harder", w8.debris > w1.debris && w8.mines > w1.mines && w8.speed > w1.speed && w8.carrierFire < w4.carrierFire)
     check("storms from wave 3, the carrier from wave 4", !w1.storms && w3.storms && !w3.carrier && w4.carrier)
+
+    // A wave that clears while the skiff is dead must still lay out the next
+    // one clear of the centre it will respawn at, not clear of wherever the
+    // skiff happened to die.
+    fresh(g)
+    g.shipAlive = false
+    g.shipX = 40; g.shipY = 40
+    var sawNearCentre = false
+    for (i = 0; i < 200; i++) {
+      var fp = g.freeSpot()
+      if (g.dist(fp.x, fp.y, g.fieldW / 2, g.fieldH / 2) < g.safeSpawn) sawNearCentre = true
+    }
+    check("hazards for the next wave spawn clear of the respawn point even while the skiff is dead", !sawNearCentre)
 
     // ---- ion gusts ----------------------------------------------------------------------
     fresh(g)
@@ -369,6 +405,56 @@ ShellRoot {
     g.step(1 / 240)
     check("a flung mine passing the skiff doesn't hurt it", g.shipAlive && !m.dead && g.lives === 3, g.lives)
 
+    // A mine dropped off the line (line ran out or snapped) sits well within
+    // arming range of the skiff that just let go of it; it needs a beat
+    // before it can re-arm, or it homes in from point-blank range at once.
+    fresh(g)
+    m = g.makeMine(400, 200, 0, 0)
+    g.tetherAction()
+    run(g, 0.5, function () { return g.tether === "tow" })
+    check("towing pulls the mine well inside its own arming range", g.tether === "tow"
+          && g.dist(m.x, m.y, g.shipX, g.shipY) < g.mineArmRange, g.dist(m.x, m.y, g.shipX, g.shipY))
+    g.towLeft = 0.002
+    g.step(1 / 240)
+    check("the line running out drops the mine without re-arming it at once",
+          g.tether === "idle" && !m.towed && !m.armed, m.armed)
+    run(g, g.mineDropGrace - 0.05)
+    check("it stays disarmed through the grace period", !m.armed, m.armed)
+    run(g, 0.1)
+    check("and re-arms once the grace period passes, still in range", m.armed, m.armed)
+
+    // A snapped line drops the mine through the very same tetherIdle() cleanup
+    // (a snap can leave the mine outside arming range for a while, so drive
+    // the shared cleanup directly to prove the grace applies there too).
+    fresh(g)
+    m = g.makeMine(g.shipX + 60, g.shipY, 0, 0)   // inside arming range
+    g.towed = m; m.towed = true; g.tether = "tow"
+    g.tetherIdle()
+    check("the snap path (tetherIdle) also arms the mine's grace instead of leaving it live",
+          !m.towed && !m.armed && m.armGrace > 0, m.armGrace)
+    run(g, 0.05)
+    check("...so it stays disarmed right after, even well within range", !m.armed, m.armed)
+
+    // A towed or flung mine is on the skiff's own side: its blast must not
+    // kill the skiff that was towing or just flung it, even point-blank.
+    fresh(g)
+    m = g.makeMine(g.shipX + 40, g.shipY, 0, 0)     // well inside blastR + shipR of the skiff
+    m.flung = 1
+    g.explodeMine(m, 3)
+    check("a flung mine's own blast doesn't kill the skiff that released it",
+          g.shipAlive && g.lives === 3, g.lives)
+    fresh(g)
+    m = g.makeMine(g.shipX + 40, g.shipY, 0, 0)
+    m.towed = true
+    g.explodeMine(m, 2)
+    check("a towed mine's own blast doesn't kill the skiff towing it either",
+          g.shipAlive && g.lives === 3, g.lives)
+    fresh(g)
+    m = g.makeMine(g.shipX + 40, g.shipY, 0, 0)
+    g.explodeMine(m, 1)
+    check("an ordinary mine's blast still kills the skiff up close",
+          !g.shipAlive && g.lives === 2, g.lives)
+
     // The carrier doesn't wrap, so neither do its hits.
     fresh(g)
     g.carriers = [{ x: -40, y: 300, baseY: 300, vx: 70, t: 0, hp: 6, maxHp: 6, fireT: 99, mineT: 99, flash: 0, dead: false }]
@@ -429,6 +515,49 @@ ShellRoot {
           g.debrisView.itemAt(0).x)
     check("the drawn mine moves when the mine does", near(g.mineView.itemAt(0).x, 150 - g.mineR), g.mineView.itemAt(0).x)
     check("the drawn skiff turns with the skiff", near(g.shipView.rotation, 90), g.shipView.rotation)
+
+    // Debris delegates read their shape and position through an accessor
+    // (game.debrisAt(index)), never by holding the array element itself, so
+    // when one piece dies and compaction shifts a different piece into its
+    // slot, the delegate at that index must repaint as the new piece, not
+    // freeze on the old one's shape (docs/GAMES.md, "Draw without freezing").
+    fresh(g)
+    d = g.makeDebris(2, 300, 300, 0, 0)          // will die and be compacted out
+    d2 = g.makeDebris(1, 500, 400, 0, 0)         // survives, shifts down into slot 0
+    g.publish()
+    check("two distinct debris shapes to start", g.debrisView.itemAt(0).pts !== g.debrisView.itemAt(1).pts)
+    d.dead = true
+    g.compactAll()
+    g.publish()
+    check("compaction maps a later index onto the next surviving debris", g.debris.length === 1 && g.debris[0] === d2)
+    var slot0 = g.debrisView.itemAt(0)
+    check("the drawn shape at that slot follows the debris now there, not the dead one",
+          !!slot0 && slot0.pts === d2.pts, slot0 ? "stale shape" : "no item")
+    check("the drawn position at that slot follows too",
+          !!slot0 && near(slot0.x, 500 - d2.r) && near(slot0.y, 400 - d2.r), slot0 ? slot0.x + "," + slot0.y : "no item")
+    d2.x = 650; d2.y = 120
+    g.publish()
+    check("...and keeps following when that surviving debris moves",
+          near(g.debrisView.itemAt(0).x, 650 - d2.r) && near(g.debrisView.itemAt(0).y, 120 - d2.r), g.debrisView.itemAt(0).x)
+
+    // House rule: only foreground/bright_foreground/accent/red draw text; yellow,
+    // orange, green and cyan are for shapes and bars, too low-contrast for text
+    // on light themes.
+    g.theme = { green: "#9ece6a", cyan: "#7dcfff", bright_foreground: "#c0caf5", accent: "#7aa2f7" }
+    g.popup(400, 300, "+10")
+    g.publish()
+    check("a score popup is a theme text color, not the low-contrast green hue",
+          Qt.colorEqual(g.popupView.itemAt(0).color, g.color("bright_foreground", "#c0caf5"))
+          && !Qt.colorEqual(g.popupView.itemAt(0).color, g.color("green", "#9ece6a")), g.popupView.itemAt(0).color)
+    g.tether = "tow"
+    check("the TOW label is a theme text color, not the low-contrast green hue",
+          Qt.colorEqual(g.tetherLabel.color, g.color("bright_foreground", "#c0caf5"))
+          && !Qt.colorEqual(g.tetherLabel.color, g.color("green", "#9ece6a")), g.tetherLabel.color)
+    g.tether = "idle"; g.tetherCd = 0
+    check("the idle TETHER label is a theme text color, not the low-contrast cyan hue",
+          Qt.colorEqual(g.tetherLabel.color, g.color("accent", "#7aa2f7"))
+          && !Qt.colorEqual(g.tetherLabel.color, g.color("cyan", "#7dcfff")), g.tetherLabel.color)
+    g.theme = {}
 
     // ---- high score and reset ------------------------------------------------------
     fresh(g)

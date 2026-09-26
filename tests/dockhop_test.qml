@@ -74,13 +74,17 @@ ShellRoot {
     check("the same seed builds the same lanes",
           JSON.stringify(built) === JSON.stringify(Lanes.build(L1, { s: 5 }, T, g.fieldW, g.margin))
           && JSON.stringify(built) !== JSON.stringify(Lanes.build(L1, { s: 6 }, T, g.fieldW, g.margin)))
-    // Traffic never builds a lane with two objects overlapping.
+    // Traffic never builds a lane with two objects overlapping — including the
+    // pair that wraps around the loop (the last object against the first, once
+    // the loop length is added back).
     var overlapFree = true
+    var loopLen = g.fieldW + 2 * g.margin
     for (var r = 6; r <= 11; r++) {
       var xs = built.filter(function (b) { return b.row === r }).map(function (b) { return b.x + g.margin }).sort(function (a, b) { return a - b })
       for (i = 1; i < xs.length; i++) if (xs[i] - xs[i - 1] < L1[r].len * T) overlapFree = false
+      if (xs.length > 1 && (xs[0] + loopLen - xs[xs.length - 1]) < L1[r].len * T) overlapFree = false
     }
-    check("traffic objects in a lane never overlap", overlapFree)
+    check("traffic objects in a lane never overlap, wrap pair included", overlapFree)
     check("pads: on, blinking, then off, then on again",
           Lanes.padState(0) === "on" && Lanes.padState(Lanes.PAD_ON - 0.1) === "warn"
           && Lanes.padState(Lanes.PAD_ON + 0.1) === "off" && Lanes.padState(Lanes.padCycle() + 0.1) === "on")
@@ -93,6 +97,7 @@ ShellRoot {
     // ---- a new game --------------------------------------------------------------
     g.newGame(7)
     check("new game waits for the first hop", g.phase === "ready" && g.lives === 3 && g.score === 0, g.phase)
+    check("a new game banners the shift by name", g.banner === "Level 1 · Morning shift", g.banner)
     check("the bot starts mid start strip", g.heroRow === 12 && near(g.heroX, 7.5 * T), g.heroX)
     check("four empty bays and full boosts", g.dockModel.count === 4 && g.docked === 0 && g.boosts === 2 && !g.dockModel.get(0).filled)
     x0 = g.objects[0].x
@@ -277,6 +282,7 @@ ShellRoot {
     check("the next shift loads with empty bays", g.level === 2 && g.docked === 0 && !g.dockModel.get(0).filled && g.phase === "ready", g.level)
     check("the next shift is faster", g.lane(9).speed > speed1, g.lane(9).speed)
     check("the next shift is shorter on the clock", g.timeLimit() < Lanes.timeLimit(1), g.timeLimit())
+    check("the next shift banners its own name", g.banner === "Level 2 · Rush shift", g.banner)
 
     // ---- the clock -------------------------------------------------------------------
     fresh(g)
@@ -302,6 +308,12 @@ ShellRoot {
     g.lostFocus()
     check("losing focus pauses", g.phase === "paused", g.phase)
     check("losing focus drops the buffered hop", hadQueue && g.queued === null, hadQueue)
+    check("the pause hint names every key that resumes", g.hintText.text === "P or Space to resume  ·  Esc to quit", g.hintText.text)
+    g.click()
+    check("a click resumes a paused game, same as P/Space/Enter", g.phase === "play", g.phase)
+
+    g.phase = "ready"; g.banner = ""
+    check("the ready hint opens with how to start", g.hintText.text.indexOf("Hop to start") === 0, g.hintText.text)
 
     // ---- parcels ---------------------------------------------------------------------
     fresh(g); g.phase = "play"
@@ -333,8 +345,22 @@ ShellRoot {
     g.publish()
     check("the drawn forklift moves when its model does", near(g.objView.itemAt(0).x, 333), g.objView.itemAt(0).x)
     g.heroX = g.colCenter(3)
+    g.publish()
     check("the drawn bot is where the bot is", near(g.heroItem.x, g.colCenter(3) - T / 2) && near(g.heroItem.y, g.rowCenter(12) - T / 2), g.heroItem.x)
-    g.hop(0, -1); run(g, g.hopTime / 2)
+
+    // heroX/heroY are physics, written every substep; the bot is drawn from
+    // drawHeroX/drawHeroY, publish()'s once-per-frame copies (GAMES.md rule 5).
+    // Moving the physics position alone must not move the drawing...
+    var hy0 = g.heroItem.y
+    g.heroY = g.rowCenter(11)
+    check("the drawn hero doesn't move between publishes", near(g.heroItem.y, hy0), g.heroItem.y)
+    // ...but the next publish() catches it up.
+    g.publish()
+    check("the drawn hero moves after a publish", near(g.heroItem.y, g.rowCenter(11) - T / 2) && !near(g.heroItem.y, hy0), g.heroItem.y)
+    g.heroY = g.rowCenter(12)
+    g.publish()
+
+    g.hop(0, -1); run(g, g.hopTime / 2); g.publish()
     check("the drawn bot moves mid-hop", g.heroItem.y < g.rowCenter(12) - T / 2 - 5, g.heroItem.y)
 
     // ---- game over, reset and the high score -------------------------------------------
@@ -344,6 +370,8 @@ ShellRoot {
     run(g, g.deathTime + 0.2)
     check("losing the last bot ends the game", g.phase === "over" && g.lives === 0, g.phase)
     check("no hops after game over", !g.hop(0, -1) && !g.boost())
+    g.click()
+    check("a click on game over starts over, same as Enter", g.phase === "ready" && g.lives === 3 && g.score === 0, g.phase)
 
     g.newGame(7)
     g.highScore = 500

@@ -67,9 +67,9 @@ ShellRoot {
     id: window
     title: "Circuit Crawl"
     color: root.theme.background || "#1a1b26"
-    implicitWidth: 720
-    implicitHeight: 780
-    minimumSize: Qt.size(400, 430)
+    implicitWidth: 680
+    implicitHeight: 720
+    minimumSize: Qt.size(340, 360)
 
     // Quickshell keeps running when its last window closes; closing the window
     // (Super+W, the titlebar) ends the game.

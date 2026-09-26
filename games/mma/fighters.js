@@ -1,14 +1,31 @@
 .pragma library
 
+// Where the numbers come from: each archetype's eight ratings (0-10) and its
+// finish split (share of wins by KO/TKO, submission, decision) are anonymous
+// averages of the public pro-MMA records of several elite fighters with that
+// style, rounded and balanced for play. No fighter here depicts a real person.
+// The submission artist's numbers first came from a single source, so they are
+// blended 30% toward the average of the sambo grinder and the judo thrower
+// (ratings rounded to one decimal, the split to whole percents summing to 100).
+//
 // Super MMA Fighter's roster: seven invented fighters, one per archetype.
 //
 // Every name, nickname, look, hometown and crest here is made up. Hometowns are
 // invented places, not real countries, so no fighter can read as "a real fighter
-// from country X with style Y". The only real-world input is statistical: each
-// archetype's ratings (0-10) and finish split (share of wins by KO/TKO,
-// submission, decision) are anonymous averages over several elite fighters'
-// public records. Those numbers drive everything the fighter does (stats() below
-// and plan() for the CPU), so a fighter plays like their numbers.
+// from country X with style Y". The ratings and finish split drive everything a
+// fighter does (stats() below and plan() for the CPU), so a fighter plays like
+// their numbers.
+//
+// Looks. Skin tones (`skin`: 0 light .. 1 deep) span light to deep across the
+// roster and are assigned without regard to archetype. Skin tone is never what
+// keeps a fighter from resembling someone real; that is the job of invented
+// traits that are not physical identity, and each fighter has their own mix:
+//   hair     topknot | curls | ponytail | buzz | mohawk | braid | undercut
+//   beard    none | moustache | stubble | goatee
+//   pattern  the trunks: band | stripe | split | dots | panel | solid | hoops
+//   stance   orthodox | southpaw: which side leads (Fighter.qml draws it near or far)
+//   walkout  the pose held through the first round call (Game.qml walkoutPose)
+// plus the gear colors, nickname, hometown and named special.
 //
 // The roster is one open class: ratings, not size, decide a fight (documented in
 // Game.qml). Build only changes the drawing.
@@ -22,8 +39,9 @@ var RATING_LABELS = ["POWER", "SPEED", "KICKS", "CLINCH", "WRESTLING", "GRAPPLIN
 
 var ROSTER = [
   {
-    id: "brannoch", name: "Osric Brannoch", nick: "The Millstone", home: "Kestmark Steppe",
-    archetype: "sambo grinder", sex: "m", build: "stocky", hair: "buzz", skin: 0.30,
+    id: "brannoch", name: "Osric Brannoch", nick: "The Millstone", home: "Kestmark Downs",
+    archetype: "sambo grinder", sex: "m", build: "stocky", skin: 0.85,
+    hair: "topknot", beard: "moustache", pattern: "band", stance: "orthodox", walkout: "bow",
     colorKey: "red", colorFb: "#f7768e", trimKey: "yellow", trimFb: "#e0af68",
     style: "Combat sambo and chain wrestling: cage pressure, top control, ground-and-pound.",
     ratings: { power: 6, speed: 5.5, kicks: 4.5, clinch: 8.5, wrestling: 9.5, grappling: 9.5, cardio: 9.5, defense: 9 },
@@ -33,7 +51,8 @@ var ROSTER = [
   },
   {
     id: "castellane", name: "Tamsin Castellane", nick: "Two-Beat", home: "Port Varra",
-    archetype: "power counter", sex: "f", build: "lean", hair: "ponytail", skin: 0.55,
+    archetype: "power counter", sex: "f", build: "lean", skin: 0.25,
+    hair: "curls", beard: "none", pattern: "stripe", stance: "southpaw", walkout: "point",
     colorKey: "magenta", colorFb: "#bb9af7", trimKey: "cyan", trimFb: "#7dcfff",
     style: "Southpaw boxing at karate distance: counters in the pocket, early finishes.",
     ratings: { power: 9, speed: 8, kicks: 5.5, clinch: 5.5, wrestling: 5, grappling: 5.5, cardio: 5, defense: 6 },
@@ -43,9 +62,10 @@ var ROSTER = [
   },
   {
     id: "dole", name: "Caspian Dole", nick: "The Surveyor", home: "Hollin Reach",
-    archetype: "rangy technician", sex: "m", build: "tall", hair: "crop", skin: 0.35,
+    archetype: "rangy technician", sex: "m", build: "tall", skin: 0.55,
+    hair: "ponytail", beard: "stubble", pattern: "split", stance: "southpaw", walkout: "gloves",
     colorKey: "blue", colorFb: "#7aa2f7", trimKey: "green", trimFb: "#9ece6a",
-    style: "Long-reach all-rounder: jab and kicks at range, level changes, elbows from top.",
+    style: "Long-reach all-rounder: jab and kicks at range, level changes, hard strikes from top.",
     ratings: { power: 6.3, speed: 7, kicks: 8.3, clinch: 8, wrestling: 8.3, grappling: 7.7, cardio: 9.7, defense: 9 },
     finishes: { ko: 34, sub: 25, dec: 41 },
     subs: ["guillotine", "rnc"],
@@ -54,7 +74,8 @@ var ROSTER = [
   },
   {
     id: "marrask", name: "Signe Marrask", nick: "Metronome", home: "Ostmere",
-    archetype: "kickboxing sniper", sex: "f", build: "lean", hair: "braid", skin: 0.15,
+    archetype: "kickboxing sniper", sex: "f", build: "lean", skin: 0.95,
+    hair: "buzz", beard: "none", pattern: "dots", stance: "orthodox", walkout: "armsup",
     colorKey: "green", colorFb: "#9ece6a", trimKey: "orange", trimFb: "#ff9e64",
     style: "Kickboxing and clinch knees at long range; weak off her back.",
     ratings: { power: 8.7, speed: 7.7, kicks: 8.7, clinch: 6.7, wrestling: 2.3, grappling: 3.7, cardio: 6.7, defense: 6.3 },
@@ -64,7 +85,8 @@ var ROSTER = [
   },
   {
     id: "korrow", name: "Bastian Korrow", nick: "Rockfall", home: "Calder Isles",
-    archetype: "heavy hitter", sex: "m", build: "heavy", hair: "beard", skin: 0.50,
+    archetype: "heavy hitter", sex: "m", build: "heavy", skin: 0.10,
+    hair: "mohawk", beard: "goatee", pattern: "panel", stance: "southpaw", walkout: "flex",
     colorKey: "orange", colorFb: "#ff9e64", trimKey: "red", trimFb: "#f7768e",
     style: "Heavyweight power: one-shot punches, short fights, a short gas tank.",
     ratings: { power: 9.3, speed: 7.3, kicks: 5, clinch: 6.3, wrestling: 6.3, grappling: 6, cardio: 5.3, defense: 6.3 },
@@ -74,17 +96,20 @@ var ROSTER = [
   },
   {
     id: "quenby", name: "Liora Quenby", nick: "The Vine", home: "Red Fen",
-    archetype: "submission artist", sex: "f", build: "medium", hair: "bun", skin: 0.45,
+    archetype: "submission artist", sex: "f", build: "medium", skin: 0.70,
+    hair: "braid", beard: "none", pattern: "solid", stance: "orthodox", walkout: "fist",
     colorKey: "cyan", colorFb: "#7dcfff", trimKey: "magenta", trimFb: "#bb9af7",
     style: "Jiu-jitsu: chokes and joint locks from anywhere, dangerous even when losing.",
-    ratings: { power: 7, speed: 7, kicks: 7, clinch: 7, wrestling: 5, grappling: 10, cardio: 7, defense: 4 },
-    finishes: { ko: 27, sub: 59, dec: 14 },
+    // Blended 30% toward the sambo grinder / judo thrower average (see the top).
+    ratings: { power: 6.7, speed: 6.6, kicks: 5.9, clinch: 7.7, wrestling: 6.3, grappling: 9.9, cardio: 7.1, defense: 4.9 },
+    finishes: { ko: 26, sub: 56, dec: 18 },
     subs: ["triangle", "armbar", "rnc", "guillotine", "kimura"],
     special: { id: "vine", name: "Vine Pull", hint: "pull guard straight into a lock" }
   },
   {
     id: "tidewell", name: "Maren Tidewell", nick: "The Keel", home: "Sable Coast",
-    archetype: "judo thrower", sex: "f", build: "medium", hair: "short", skin: 0.65,
+    archetype: "judo thrower", sex: "f", build: "medium", skin: 0.40,
+    hair: "undercut", beard: "none", pattern: "hoops", stance: "southpaw", walkout: "calm",
     colorKey: "yellow", colorFb: "#e0af68", trimKey: "blue", trimFb: "#7aa2f7",
     style: "Judo: clinch throws and trips straight into armbars, heavy top control.",
     ratings: { power: 6, speed: 5.5, kicks: 2, clinch: 10, wrestling: 9, grappling: 9.5, cardio: 5, defense: 5 },

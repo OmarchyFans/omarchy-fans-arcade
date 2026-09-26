@@ -114,6 +114,8 @@ FocusScope {
   readonly property alias shotView: shotView
   readonly property alias linkView: linkView
   readonly property alias bossView: bossView
+  readonly property alias livesView: livesView
+  readonly property alias overText: text2
 
   function color(key, fallback) { return theme[key] || fallback }
   function clamp(v, lo, hi) { return Math.max(lo, Math.min(hi, v)) }
@@ -204,6 +206,12 @@ FocusScope {
   function pause() { if (phase === "play") phase = "paused" }
   function resume() { if (phase === "paused") phase = "play" }
   function togglePause() { if (phase === "play") pause(); else if (phase === "paused") resume() }
+  // A click on the field: same as Enter on ready/over, and it also resumes a pause.
+  function fieldClicked() {
+    if (phase === "over") newGame()
+    else if (phase === "ready") start()
+    else if (phase === "paused") resume()
+  }
   // Key releases don't arrive while away: forget held keys, or the cannon would
   // keep drifting (and firing) after the game resumes.
   function lostFocus() {
@@ -659,10 +667,11 @@ FocusScope {
     function onStateChanged() { if (Qt.application.state !== Qt.ApplicationActive) game.lostFocus() }
   }
 
-  // Space held down keeps firing through fireHeld, so key auto-repeat is ignored.
-  Keys.onPressed: function (e) {
-    if (e.isAutoRepeat) { e.accepted = true; return }
-    switch (e.key) {
+  // What a key does, pulled out of the event handler so the rules test can drive
+  // it directly (Keys.onPressed's KeyEvent can't be built from plain JS). Returns
+  // true when the key meant something, so the caller knows to accept the event.
+  function keyDown(key) {
+    switch (key) {
     case Qt.Key_Left: case Qt.Key_A: leftHeld = true; break
     case Qt.Key_Right: case Qt.Key_D: rightHeld = true; break
     case Qt.Key_Space:
@@ -675,11 +684,18 @@ FocusScope {
       if (phase === "over") newGame()
       else if (phase === "ready") start()
       else if (phase === "play") fire()
+      else if (phase === "paused") resume()
       break
     case Qt.Key_Escape: quitRequested(); break
-    default: return
+    default: return false
     }
-    e.accepted = true
+    return true
+  }
+
+  // Space held down keeps firing through fireHeld, so key auto-repeat is ignored.
+  Keys.onPressed: function (e) {
+    if (e.isAutoRepeat) { e.accepted = true; return }
+    if (keyDown(e.key)) e.accepted = true
   }
   Keys.onReleased: function (e) {
     if (e.isAutoRepeat) return
@@ -984,7 +1000,8 @@ FocusScope {
         }
         Item { width: 6; height: 1 }
         Repeater {
-          model: Math.max(0, game.lives - (game.shipAlive ? 1 : 0))
+          id: livesView
+          model: game.lives
           delegate: Rectangle {
             anchors.verticalCenter: parent.verticalCenter
             width: 12; height: 12; radius: 2; rotation: 45
@@ -1034,9 +1051,10 @@ FocusScope {
         font.pixelSize: game.phase === "play" ? 30 : 40; font.bold: true; font.family: "monospace"
       }
       Text {
+        id: text2
         anchors.horizontalCenter: parent.horizontalCenter
         visible: text !== ""
-        text: game.phase === "over" ? "Stage " + game.stage + "  ·  Score " + game.score + (game.beatHigh ? "  ·  new high score!" : "") + "\nEnter to play again  ·  Esc to quit"
+        text: game.phase === "over" ? "Score " + game.score + "  ·  Stage " + game.stage + (game.beatHigh ? "  ·  new high score!" : "") + "\nEnter to play again  ·  Esc to quit"
             : game.phase === "paused" ? "P or Space to resume  ·  Esc to quit"
             : game.phase === "ready" ? "Space to launch  ·  ← → or A/D move  ·  Space fire  ·  P pause\nWipe out a linked constellation fast for a wing drone"
             : ""
@@ -1050,8 +1068,7 @@ FocusScope {
       anchors.fill: parent
       onClicked: {
         game.forceActiveFocus()
-        if (game.phase === "over") game.newGame()
-        else if (game.phase === "ready") game.start()
+        game.fieldClicked()
       }
     }
   }

@@ -458,6 +458,19 @@ ShellRoot {
     g.newGame(5)
     check("a new game clears the new-high-score flag", !g.beatHigh)
 
+    // ---- HUD -------------------------------------------------------------------------------------
+    play(g)
+    g.lives = 3
+    check("every life is drawn, not just the spares", g.livesView.count === 3, g.livesView.count)
+    g.lives = 1
+    check("down to one life, one icon is still drawn", g.livesView.count === 1, g.livesView.count)
+
+    g.newGame(5)
+    check("the title screen leads with the start key",
+          g.hintText.text.indexOf("Space or an arrow to start") === 0, g.hintText.text)
+
+    check("OVERCLOCK is legible, not low-contrast orange", g.overclockLabel.color == "#c0caf5", g.overclockLabel.color)
+
     // ---- drawing follows the model ----------------------------------------------------------------
     play(g)
     b = bug(g, "Null"); activate(b, 12.5, 7, -1, 0)

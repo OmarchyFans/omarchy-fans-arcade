@@ -566,5 +566,43 @@ ShellRoot {
     check("new game resets everything", g.level === 1 && g.score === 0 && g.levelScore === 0 && g.moves === Levels.level(1).moves
           && g.phase === "ready" && g.charges === 1 && g.fluxMeter === 0 && g.shuffles === 0 && g.busy === "idle"
           && g.selected === -1 && g.goalCounts.length === 1 && g.goalCounts[0] === 0 && g.friedLeft === 0)
+
+    // ---- on-screen text and color match the house conventions --------------------------------------
+    fresh(g)
+    g.score = 240; g.level = 3; g.beatHigh = false
+    g.gameOver()
+    check("game-over text reads Score N  ·  Level N with double-spaced dots, no lone 'level N' line",
+          g.subtitleText.text === "Score 240  ·  Level 3\nEnter to play again  ·  Esc to quit", g.subtitleText.text)
+    g.beatHigh = true
+    check("a new high score is appended before the line break",
+          g.subtitleText.text === "Score 240  ·  Level 3  ·  new high score!\nEnter to play again  ·  Esc to quit", g.subtitleText.text)
+
+    g.newGame()
+    check("the ready screen names start, move keys, pause and this game's own controls",
+          g.subtitleText.text.indexOf("Space or click to start") === 0
+          && g.subtitleText.text.indexOf("arrows/WASD move") >= 0
+          && g.subtitleText.text.indexOf("P pause") >= 0
+          && g.subtitleText.text.indexOf("R reroute") >= 0
+          && g.subtitleText.text.indexOf("H hint") >= 0, g.subtitleText.text)
+
+    check("the message backdrop matches the house opacity", Math.abs(g.messageBackdrop.opacity - 0.92) < 1e-6, g.messageBackdrop.opacity)
+
+    g.theme = { bright_foreground: "#c0caf5", yellow: "#e0af68", dark_background: "#13141c" }
+    check("the cascade combo text is a theme text color, not the low-contrast yellow hue",
+          Qt.colorEqual(g.comboLabel.color, g.color("bright_foreground", "#c0caf5"))
+          && !Qt.colorEqual(g.comboLabel.color, g.color("yellow", "#e0af68")), g.comboLabel.color)
+    g.theme = {}
+
+    fresh(g)
+    g.theme = { green: "#9ece6a", bright_foreground: "#c0caf5" }
+    var goalN = g.levelInfo.goals[0].n
+    g.goalCounts = [0]
+    var goalLabel = g.goalView.itemAt(0).label
+    check("an unmet salvage goal shows plain counts with no check mark",
+          goalLabel.text === "0 / " + goalN && !Qt.colorEqual(goalLabel.color, g.color("green", "#9ece6a")), goalLabel.text)
+    g.goalCounts = [goalN]
+    check("a met salvage goal gets a check-mark prefix, not a low-contrast green hue",
+          goalLabel.text.indexOf("✓ ") === 0 && Qt.colorEqual(goalLabel.color, g.color("bright_foreground", "#c0caf5")), goalLabel.text)
+    g.theme = {}
   }
 }

@@ -320,11 +320,25 @@ ShellRoot {
     g.step(1)
     check("pause freezes the piece", g.phase === "paused" && g.curY === 3, g.curY)
     check("a paused piece doesn't move", !g.move(1, 0) && !g.rotate(1) && !g.hardDrop() && g.curX === 4)
+    check("Space also resumes from paused", g.handleKey(Qt.Key_Space) && g.phase === "play", g.phase)
     g.togglePause()
-    check("resume plays", g.phase === "play", g.phase)
+    check("Enter also resumes from paused", g.handleKey(Qt.Key_Return) && g.phase === "play", g.phase)
     g.leftHeld = true; g.downHeld = true
     g.lostFocus()
     check("losing focus pauses and forgets held keys", g.phase === "paused" && !g.leftHeld && !g.rightHeld && !g.downHeld, g.phase)
+
+    // ---- game over lands back on the title screen, not straight into play ------------------
+    fresh(g); place(g, "pip", 0, 4, 20)
+    for (y = 0; y < 4; y++) for (x = 4; x < 8; x++) g.setCell(x, y, "flag", false)
+    g.hardDrop()
+    check("game over is set up for this", g.phase === "over", g.phase)
+    check("Enter on GAME OVER starts a new game but waits to play", g.handleKey(Qt.Key_Return) && g.phase === "ready" && g.curKind === "", g.phase)
+
+    fresh(g); place(g, "pip", 0, 4, 20)
+    for (y = 0; y < 4; y++) for (x = 4; x < 8; x++) g.setCell(x, y, "flag", false)
+    g.hardDrop()
+    g.clicked()
+    check("a click on GAME OVER does the same as Enter", g.phase === "ready" && g.curKind === "", g.phase)
 
     // ---- drawing follows the state -----------------------------------------------------------
     fresh(g); place(g, "pip", 0, 4, 5)

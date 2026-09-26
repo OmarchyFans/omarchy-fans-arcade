@@ -201,6 +201,10 @@ FocusScope {
   readonly property alias bugView: bugView
   readonly property alias bitView: bitView
   readonly property alias byteItem: byteItem
+  readonly property alias livesView: livesView
+  readonly property alias overclockLabel: overclockLabel
+  readonly property alias titleText: title
+  readonly property alias hintText: hint
 
   // ---- boards and lives ------------------------------------------------------------
   function loadLevel() {
@@ -644,16 +648,18 @@ FocusScope {
         anchors.right: parent.right; anchors.rightMargin: 14
         spacing: 6
         Text {
+          id: overclockLabel
           visible: game.overclocked
           anchors.verticalCenter: parent.verticalCenter
           text: "OVERCLOCK"
-          color: game.color("orange", "#ff9e64")
+          color: game.color("bright_foreground", "#c0caf5")
           font.pixelSize: 12; font.bold: true; font.family: "monospace"
           rightPadding: 6
         }
-        // Spare lives, as little Byte heads.
+        // Lives, as little Byte heads (every life in play, not just the spares).
         Repeater {
-          model: Math.max(0, game.lives - 1)
+          id: livesView
+          model: game.lives
           delegate: Rectangle {
             width: 14; height: 12; radius: 3
             anchors.verticalCenter: parent ? parent.verticalCenter : undefined
@@ -1003,10 +1009,11 @@ FocusScope {
         font.pixelSize: game.phase === "ready" && game.armed ? 26 : 34; font.bold: true; font.family: "monospace"
       }
       Text {
+        id: hint
         anchors.horizontalCenter: parent.horizontalCenter
         text: game.phase === "over" ? "Score " + game.score + (game.beatHigh ? "  ·  new high score!" : "") + "\nEnter to play again  ·  Esc to quit"
             : game.phase === "paused" ? "P or Space to resume  ·  Esc to quit"
-            : game.phase === "ready" && !game.armed ? "Arrows or WASD to crawl  ·  P pause\nCollect every bit. Debug chips make bugs squashable.\nCoffee overclocks you."
+            : game.phase === "ready" && !game.armed ? "Space or an arrow to start  ·  Arrows or WASD to crawl  ·  P pause\nCollect every bit. Debug chips make bugs squashable.\nCoffee overclocks you."
             : game.phase === "ready" && game.banner !== "" ? "READY" : ""
         horizontalAlignment: Text.AlignHCenter
         color: game.color("foreground", "#a9b1d6")

@@ -35,7 +35,7 @@ import "cpu.js" as Cpu
 //
 // Controls: P1 WASD + F/G/H or Space (surge); in 1P also the arrows + Enter, and the mouse
 // moves P1's striker (hold a button to surge). P2 arrows + Ctrl/Shift/Enter.
-// P pauses, Esc quits, Enter plays again after a game over.
+// P pauses (P, Space or Enter resumes), Esc quits, Enter plays again after a game over.
 FocusScope {
   id: game
   focus: true
@@ -104,6 +104,14 @@ FocusScope {
   property int seed: 0
   property int rngState: 1
   property int fxState: 7
+  // A fresh seed for the next match: the clock mixed with the old seed, and never
+  // the same seed twice in a row. newGame() itself keeps the seed it is given, so
+  // the tests can replay a match exactly.
+  function rollSeed() {
+    var n = (Math.imul((seed ^ Date.now()) | 0, 0x9E3779B1) ^ 0x2545F491) >>> 1
+    if (n === 0 || n === seed) n = (seed % 2147483646) + 1
+    seed = n
+  }
   function reseed() { rngState = (seed >>> 0) || 1; fxState = ((seed ^ 0x5bd1e995) >>> 0) || 7 }
   function mulberry(st) {
     var a = (st + 0x6D2B79F5) >>> 0
@@ -133,12 +141,32 @@ FocusScope {
   readonly property alias puckView: puckView
   readonly property alias strikerView: strikerView
   readonly property alias sparkView: sparkView
+  readonly property alias trailView: trailView
+  readonly property alias fieldBg: fieldBg
+  readonly property alias backdrop: backdrop
+  // The lines under the title, PAUSED, MATCH WON and GAME OVER. Separators are
+  // double spaced ("  ·  "); single spacing is only for the HUD's match label.
+  readonly property string messageBody: phase === "select"
+      ? "Enter or Space to face off  ·  first to " + target + "\n"
+        + "P1: WASD move, F/Space surge" + (selMode === "cpu" ? " (or arrows, or the mouse + button)" : "") + "\n"
+        + (selMode === "cpu" ? "" : "P2: arrows move, Ctrl/Shift/Enter surge\n")
+        + "Hold surge to charge, strike to smash  ·  P pause  ·  Esc quit"
+    : phase === "paused" ? "P or Space to resume  ·  Esc to quit"
+    : phase === "won" ? goals1 + " – " + goals2 + "  ·  Score " + score
+                        + (beatHigh ? "  ·  new high score!" : "")
+                        + "\nEnter for match " + (matchNo + 1) + " (CPU tier " + (tier + 1) + ")  ·  M menu"
+    : phase === "over" ? goals1 + " – " + goals2
+                         + (mode === "cpu" ? "  ·  Score " + score + (beatHigh ? "  ·  new high score!" : "") : "")
+                         + "\nEnter to play again  ·  M menu  ·  Esc to quit"
+    : ""
+  readonly property bool effectsShown: phase === "serve" || phase === "play" || phase === "goal" || phase === "paused"
 
   function homeX(i) { return i === 0 ? table.L + 90 : table.R - 90 }
   function makeStriker(i) {
     return { x: homeX(i), y: table.cy, vx: 0, vy: 0, kvx: 0, kvy: 0,
-             charge: 0, armed: 0, armCharge: 0, cool: 0,
-             held: { up: false, down: false, left: false, right: false, surge: false } }
+             charge: 0, armed: 0, armCharge: 0, cool: 0, touching: false,
+             held: { up: false, down: false, left: false, right: false, surge: false },
+             keys: {} }   // which keys hold each action: key -> act (see press())
   }
   function strikerBounds(i) { return Physics.bounds(i, table) }
 
@@ -201,9 +229,10 @@ FocusScope {
     p.x = side === 0 ? (table.L + midX) / 2 : (midX + table.R) / 2
     p.y = table.cy; p.vx = 0; p.vy = 0; p.spin = 0; p.hot = 0; p.owner = -1
     for (var i = 0; i < 2; i++) {
-      var h = strikers[i].held
+      var h = strikers[i].held, k = strikers[i].keys
       strikers[i] = makeStriker(i)
       strikers[i].held = h                    // keys still held stay held
+      strikers[i].keys = k
     }
     cpuT = 0.35                               // the CPU takes a breath first
     cpuGoal = { x: homeX(1), y: table.cy, surge: false, mode: "defend" }
@@ -235,6 +264,7 @@ FocusScope {
   function endMatch(who) {
     winner = who
     banner = ""; bannerT = 0
+    sparks = []; trail = []                   // nothing left hanging over the result
     if (mode === "cpu" && who === 0) {
       addScore(100 * tier + 20 * (goals1 - goals2))
       phase = "won"
@@ -259,27 +289,43 @@ FocusScope {
     for (var i = 0; i < strikers.length; i++) {
       var h = strikers[i].held
       h.up = h.down = h.left = h.right = h.surge = false
+      strikers[i].keys = {}
       strikers[i].charge = 0; strikers[i].armed = 0; strikers[i].kvx = 0; strikers[i].kvy = 0
     }
     pause()
   }
 
   // ---- input (keys and mouse call these; the tests call them too) ------------------
-  function press(player, act) {
+  // Every key (or the mouse button) is tracked on its own, so in 1P letting go
+  // of D doesn't stop a striker still driven by Right. `key` is any name for the
+  // source; it defaults to the action. An action is held while any key holds it.
+  function press(player, act, key) {
     var s = strikers[player]
     if (!s || isCpu(player)) return
+    s.keys[key === undefined ? act : key] = act
     s.held[act] = true
     if (player === 0 && act !== "surge") mouseActive = false
   }
-  function release(player, act) {
+  function release(player, act, key) {
     var s = strikers[player]
     if (!s) return
-    s.held[act] = false
+    delete s.keys[key === undefined ? act : key]
+    var still = false
+    for (var k in s.keys) if (s.keys[k] === act) still = true
+    s.held[act] = still
   }
   function mouseMove(x, y) {
     if (mode !== "cpu") return
     mouseX = x; mouseY = y; mouseActive = true
   }
+  // The mouse button surges P1 in 1P only. Its release lets go of the mouse's own
+  // hold, never a surge key held on the keyboard (or P1's keys in 2P).
+  function mouseDown(x, y) {
+    if (mode !== "cpu") return
+    mouseMove(x, y)
+    press(0, "surge", "mouse")
+  }
+  function mouseUp() { release(0, "surge", "mouse") }
 
   // ---- surge ----------------------------------------------------------------------
   function surgeMul(s) {
@@ -377,10 +423,12 @@ FocusScope {
     var res = Physics.stepPuck(p, dt, table)
     p.rot += p.spin * 3 * dt + Physics.speed(p) * dt * 0.004
 
-    for (i = 0; i < 2; i++) {
+    // Each striker twice, so a puck squeezed between both is still separated.
+    for (var pass = 0; pass < 4; pass++) {
+      i = pass % 2
       var s = strikers[i]
       var mul = surgeMul(s)
-      if (!Physics.strike(p, s, table, mul)) continue
+      if (!Physics.strike(p, s, table, mul, strikerBounds(i))) continue
       if (phase === "serve") phase = "play"
       if (mul > 1) {
         s.charge = 0; s.armed = 0; s.cool = surgeCool
@@ -445,45 +493,51 @@ FocusScope {
     if (selRow === 0) { selMode = selMode === "cpu" ? "versus" : "cpu"; if (selMode !== "cpu") selRow = 0 }
     else selLevel = (selLevel + d + levels.length) % levels.length
   }
-  function playAgain() { var m = mode; newGame(); startRun(m, selLevel) }
+  function playAgain() { var m = mode; rollSeed(); newGame(); startRun(m, selLevel) }
+  function toMenu() { rollSeed(); newGame() }
 
-  Keys.onPressed: function (e) {
-    e.accepted = true
-    if (e.isAutoRepeat) return                 // held keys are tracked by press/release
-    if (e.key === Qt.Key_Escape) { quitRequested(); return }
-    if (e.key === Qt.Key_P) { togglePause(); return }
-    var enter = e.key === Qt.Key_Return || e.key === Qt.Key_Enter
-    var confirm = enter || e.key === Qt.Key_Space || e.key === Qt.Key_F
+  // The key handlers call these (so do the tests). keyDown returns whether the key
+  // was used.
+  function keyDown(key, autoRepeat) {
+    if (autoRepeat) return true                // held keys are tracked by press/release
+    if (key === Qt.Key_Escape) { quitRequested(); return true }
+    if (key === Qt.Key_P) { togglePause(); return true }
+    var enter = key === Qt.Key_Return || key === Qt.Key_Enter
+    var confirm = enter || key === Qt.Key_Space || key === Qt.Key_F
     switch (phase) {
     case "select":
-      switch (e.key) {
+      switch (key) {
       case Qt.Key_W: case Qt.Key_Up: selMove(-1); break
       case Qt.Key_S: case Qt.Key_Down: selMove(1); break
       case Qt.Key_A: case Qt.Key_Left: selChange(-1); break
       case Qt.Key_D: case Qt.Key_Right: selChange(1); break
-      default: if (confirm) startRun(selMode, selLevel); else e.accepted = false
+      default: if (confirm) startRun(selMode, selLevel); else return false
       }
-      return
+      return true
     case "over":
-      if (enter || e.key === Qt.Key_Space) playAgain()
-      else if (e.key === Qt.Key_M) newGame()
-      return
+      if (enter || key === Qt.Key_Space) playAgain()
+      else if (key === Qt.Key_M) toMenu()
+      return true
     case "won":
       if (confirm) nextMatch()
-      else if (e.key === Qt.Key_M) newGame()
-      return
+      else if (key === Qt.Key_M) toMenu()
+      return true
     case "paused":
-      if (e.key === Qt.Key_Space) resume()
-      return
+      if (key === Qt.Key_Space || enter) resume()
+      return true
     }
-    var a = keyAction(e.key)
-    if (a) press(a.player, a.act); else e.accepted = false
+    var a = keyAction(key)
+    if (!a) return false
+    press(a.player, a.act, key)
+    return true
   }
-  Keys.onReleased: function (e) {
-    if (e.isAutoRepeat) return
-    var a = keyAction(e.key)
-    if (a) release(a.player, a.act)
+  function keyUp(key, autoRepeat) {
+    if (autoRepeat) return
+    var a = keyAction(key)
+    if (a) release(a.player, a.act, key)
   }
+  Keys.onPressed: function (e) { e.accepted = keyDown(e.key, e.isAutoRepeat) }
+  Keys.onReleased: function (e) { keyUp(e.key, e.isAutoRepeat) }
 
   Component.onCompleted: {
     if (seed === 0) seed = (Date.now() % 2147483647) || 1
@@ -498,7 +552,7 @@ FocusScope {
     anchors.centerIn: parent
     scale: Math.min(game.width / game.fieldW, game.height / game.fieldH)
 
-    Rectangle { anchors.fill: parent; color: game.color("background", "#1a1b26"); radius: 8 }
+    Rectangle { id: fieldBg; anchors.fill: parent; color: game.color("dark_background", "#13141c"); radius: 6 }
 
     // HUD: goals for each side, the match, and (1P) score and high score.
     Rectangle {
@@ -607,11 +661,13 @@ FocusScope {
       }
     }
 
-    // Hot-puck trail.
+    // Hot-puck trail (and the sparks below) only show while a match is on.
     Repeater {
+      id: trailView
       model: game.trail.length
       delegate: Rectangle {
         required property int index
+        visible: game.effectsShown
         readonly property real r: game.table.r * (0.4 + 0.6 * game.trailAt(index).a)
         x: game.trailAt(index).x - r; y: game.trailAt(index).y - r
         width: r * 2; height: width; radius: r
@@ -716,6 +772,7 @@ FocusScope {
       model: game.sparks.length
       delegate: Rectangle {
         required property int index
+        visible: game.effectsShown
         x: game.sparkAt(index).x - 2.5; y: game.sparkAt(index).y - 2.5
         width: 5; height: 5; radius: 2.5
         color: game.sideColor(game.sparkAt(index).side)
@@ -753,12 +810,13 @@ FocusScope {
 
     // Menus and messages, on a backdrop.
     Rectangle {
+      id: backdrop
       anchors.centerIn: messages
       width: messages.width + 56; height: messages.height + 40
       radius: 10
       visible: messages.visible
       color: game.color("dark_background", "#13141c")
-      opacity: 0.94
+      opacity: 0.92
       border.width: 1
       border.color: game.color("lighter_background", "#24283b")
     }
@@ -799,19 +857,7 @@ FocusScope {
       Text {
         anchors.horizontalCenter: parent.horizontalCenter
         horizontalAlignment: Text.AlignHCenter
-        text: game.phase === "select"
-              ? "Enter or Space to face off · first to " + game.target + "\n"
-                + "P1: WASD, F/Space surge" + (game.selMode === "cpu" ? " (or arrows, or the mouse + button)" : "") + "\n"
-                + (game.selMode === "cpu" ? "" : "P2: arrows, Ctrl/Shift/Enter surge\n")
-                + "Hold surge to charge, strike to smash · P pause · Esc quit"
-            : game.phase === "paused" ? "P or Space to resume  ·  Esc to quit"
-            : game.phase === "won" ? game.goals1 + " – " + game.goals2 + "  ·  score " + game.score
-                                     + (game.beatHigh ? "  ·  new high score!" : "")
-                                     + "\nEnter for match " + (game.matchNo + 1) + " (CPU tier " + (game.tier + 1) + ")  ·  M menu"
-            : game.phase === "over" ? game.goals1 + " – " + game.goals2
-                                      + (game.mode === "cpu" ? "  ·  score " + game.score + (game.beatHigh ? "  ·  new high score!" : "") : "")
-                                      + "\nEnter to play again  ·  M menu  ·  Esc to quit"
-            : ""
+        text: game.messageBody
         color: game.color("foreground", "#a9b1d6")
         font.pixelSize: 15; font.family: "monospace"
         lineHeight: 1.2
@@ -831,10 +877,10 @@ FocusScope {
         case "over": game.playAgain(); break
         case "won": game.nextMatch(); break
         case "paused": game.resume(); break
-        default: if (game.mode === "cpu") { game.mouseMove(m.x, m.y); game.press(0, "surge") }
+        default: game.mouseDown(m.x, m.y)
         }
       }
-      onReleased: game.release(0, "surge")
+      onReleased: game.mouseUp()
     }
   }
 }

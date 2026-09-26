@@ -375,6 +375,17 @@ ShellRoot {
     check("losing the last cannon ends the game", g.phase === "over" && g.lives === 0, g.phase)
     check("no firing after game over", !g.fire())
 
+    // House rule: the lives dots draw every life (the one in play included), not
+    // just the spares. fresh() leaves the cannon alive with 3 lives.
+    fresh(g); g.publish()
+    check("the life dots show every life, not just spares", g.livesView.count === 3 && g.lives === 3, g.livesView.count)
+
+    // House rule: GAME OVER reads "Score N  ·  Stage N[  ·  new high score!]".
+    g.phase = "over"; g.score = 1234; g.stage = 3; g.beatHigh = false
+    check("game over shows the score before the stage", g.overText.text.indexOf("Score 1234  ·  Stage 3") === 0, g.overText.text)
+    g.beatHigh = true
+    check("a beaten high score adds to the game-over line", g.overText.text.indexOf("new high score!") > 0, g.overText.text)
+
     // ---- pause and focus ---------------------------------------------------------------
     fresh(g); run(g, 1)
     g.togglePause()
@@ -387,6 +398,27 @@ ShellRoot {
     g.lostFocus()
     check("losing focus pauses", g.phase === "paused", g.phase)
     check("losing focus forgets held keys", !g.leftHeld && !g.rightHeld && !g.fireHeld)
+
+    // House rule: while paused, P, Space and Enter all resume, and so does a click.
+    fresh(g); run(g, 1); g.pause()
+    check("Enter resumes from pause", g.keyDown(Qt.Key_Return) && g.phase === "play", g.phase)
+    g.pause()
+    check("Space resumes from pause", g.keyDown(Qt.Key_Space) && g.phase === "play", g.phase)
+    g.pause()
+    g.fieldClicked()
+    check("a click resumes from pause", g.phase === "play", g.phase)
+
+    // House rule: Enter (or a click) on GAME OVER starts a new game and lands on
+    // the ready screen, not straight into play; a click on ready starts play.
+    fresh(g); g.score = 500; g.phase = "over"
+    g.keyDown(Qt.Key_Return)
+    check("Enter on game over goes to ready, not play", g.phase === "ready" && g.score === 0, g.phase)
+    fresh(g); g.score = 500; g.phase = "over"
+    g.fieldClicked()
+    check("a click on game over also starts a new game", g.phase === "ready" && g.score === 0, g.phase)
+    g.newGame()
+    g.fieldClicked()
+    check("a click on the ready screen starts play", g.phase === "play", g.phase)
 
     // ---- drawing follows the rules -------------------------------------------------------
     fresh(g); settle(g)

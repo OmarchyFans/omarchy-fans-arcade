@@ -67,9 +67,10 @@ ShellRoot {
     id: window
     title: "Super MMA Fighter"
     color: root.theme.background || "#1a1b26"
+    // The 800x540 field at 1.2x plus the 24px margin, with the field's aspect.
     implicitWidth: 960
-    implicitHeight: 720
-    minimumSize: Qt.size(480, 360)
+    implicitHeight: 672
+    minimumSize: Qt.size(480, 336)
 
     // Quickshell keeps running when its last window closes; closing the window
     // (Super+W, the titlebar) ends the game.

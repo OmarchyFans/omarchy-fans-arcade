@@ -116,6 +116,7 @@ FocusScope {
   property real resultT: 0
   property real clock: 0
   property real drawT: 0            // `clock` as of the last publish(): what the drawing animates by
+  property bool walkoutOn: false    // as of the last publish(): the first round call, when fighters hold their walkout pose
   property int score: 0
   property bool beatHigh: false
   property int tallyP1: 0           // versus: fights won this session
@@ -179,6 +180,7 @@ FocusScope {
   // Once per frame, never per substep. The drawing reads drawT, not clock, so
   // nothing on screen re-evaluates between publishes.
   function publish() {
+    walkoutOn = phase === "ready" && round === 1 && readyT > 0.45
     drawT = clock; fighters = fighters.slice(); sparks = sparks.slice(); rs = rs.slice()
     gnd = Object.assign({}, gnd); subS = Object.assign({}, subS); clinchS = Object.assign({}, clinchS)
   }
@@ -1114,35 +1116,39 @@ FocusScope {
   }
 
   // ---- keys -------------------------------------------------------------------
-  Keys.onPressed: function (e) {
-    e.accepted = true
-    if (e.isAutoRepeat) return            // held keys are flags; repeats mean nothing
-    if (e.key === Qt.Key_Escape) { quitRequested(); return }
-    if (e.key === Qt.Key_P) { togglePause(); return }
+  // One key press; returns whether the game used it. Keys.onPressed hands every
+  // press here, and the rules test calls it directly.
+  function keyDown(key, autoRepeat) {
+    if (autoRepeat) return true           // held keys are flags; repeats mean nothing
+    if (key === Qt.Key_Escape) { quitRequested(); return true }
+    if (key === Qt.Key_P) { togglePause(); return true }
+    // While paused, Space and Enter resume too (P is above).
+    if (phase === "paused" && (key === Qt.Key_Space || key === Qt.Key_Return || key === Qt.Key_Enter)) { resume(); return true }
     if (phase === "select") {
-      switch (e.key) {
+      switch (key) {
       case Qt.Key_W: case Qt.Key_Up: selMove(-1); break
       case Qt.Key_S: case Qt.Key_Down: selMove(1); break
       case Qt.Key_A: case Qt.Key_Left: selChange(-1); break
       case Qt.Key_D: case Qt.Key_Right: selChange(1); break
       case Qt.Key_F: case Qt.Key_Space: case Qt.Key_Return: case Qt.Key_Enter: selConfirm(); break
-      default: e.accepted = false
+      default: return false
       }
-      return
+      return true
     }
     if (phase === "result") {
-      if (e.key === Qt.Key_Return || e.key === Qt.Key_Enter || e.key === Qt.Key_Space || e.key === Qt.Key_F) afterFight()
-      return
+      if (key === Qt.Key_Return || key === Qt.Key_Enter || key === Qt.Key_Space || key === Qt.Key_F) afterFight()
+      return true
     }
     if (phase === "over") {
-      if (e.key === Qt.Key_Return || e.key === Qt.Key_Enter || e.key === Qt.Key_Space) toSelect()
-      else e.accepted = false
-      return
+      if (key === Qt.Key_Return || key === Qt.Key_Enter || key === Qt.Key_Space) { toSelect(); return true }
+      return false
     }
-    var a = keyAction(e.key)
-    if (!a) { e.accepted = false; return }
+    var a = keyAction(key)
+    if (!a) return false
     press(a.player, a.act, false)
+    return true
   }
+  Keys.onPressed: function (e) { e.accepted = keyDown(e.key, e.isAutoRepeat) }
   Keys.onReleased: function (e) {
     if (e.isAutoRepeat) return
     var a = keyAction(e.key)
@@ -1192,6 +1198,20 @@ FocusScope {
     case "legkick": return { lFu: -58, lFl: -8, lean: -10 }
     case "knee": return { lFu: -100, lFl: 110, lean: 4, aFu: -110, aFl: -40, aBu: -110, aBl: -40 }
     case "skyknee": return { lFu: -110, lFl: 120, lBu: 30, lBl: 70, lean: 8, aFu: -150, aFl: -20, lift: 40 }
+    }
+    return {}
+  }
+  // Each fighter's walkout pose, held through the first round call (fighters.js
+  // `walkout`): one of the invented traits that make each fighter their own.
+  function walkoutPose(kind) {
+    switch (kind) {
+    case "bow": return { lean: 38, hip: 0.92, aFu: -20, aFl: -30, aBu: -10, aBl: -20 }
+    case "point": return { aFu: -125, aFl: -4, aBu: -60, aBl: -110, lean: 0 }
+    case "gloves": return { aFu: -82, aFl: -62, aBu: -84, aBl: -58, lean: 4 }
+    case "armsup": return { aFu: -172, aFl: -10, aBu: -168, aBl: -14, lean: -6 }
+    case "flex": return { aFu: -95, aFl: -165, aBu: -92, aBl: -168, lean: -8, hip: 0.97 }
+    case "fist": return { aFu: -168, aFl: -6, aBu: -30, aBl: -70, lean: 0 }
+    case "calm": return { aFu: -8, aFl: -12, aBu: 8, aBl: -8, lean: 0, hip: 0.97 }
     }
     return {}
   }
@@ -1246,6 +1266,7 @@ FocusScope {
     var bounce = 0
     switch (p.state) {
     case "idle":
+      if (walkoutOn) { q = mixPose(q, walkoutPose(defOf(p).walkout), 1); break }
       if (Math.abs(p.vx) > 1) {
         var ph = Math.sin(drawT * 11 * (p.vx * p.facing > 0 ? 1 : -1))
         q.lFu = -16 + 22 * ph; q.lBu = 16 - 22 * ph

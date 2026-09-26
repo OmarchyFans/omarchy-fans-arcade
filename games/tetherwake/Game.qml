@@ -70,6 +70,7 @@ FocusScope {
   readonly property real mineArmRange: 170
   readonly property real mineAccel: 150
   readonly property real blastR: 64
+  readonly property real mineDropGrace: 0.5    // a dropped mine waits this long before it can re-arm
   // carrier
   readonly property real carrierR: 26
   readonly property real carrierSpeed: 70
@@ -181,6 +182,9 @@ FocusScope {
   readonly property alias mineView: mineView
   readonly property alias bulletView: bulletView
   readonly property alias carrierView: carrierView
+  readonly property alias popupView: popupView
+  readonly property alias tetherLabel: tetherLabel
+  readonly property alias subtitleText: subtitleText
 
   // Physics mutates the arrays in place; the drawing sees them once per frame.
   function publish() {
@@ -214,12 +218,18 @@ FocusScope {
     if (phase !== "ready") return
     phase = "play"
     invuln = 2
-    flash("WAVE 1")
+    flash("Wave 1")
   }
 
   function pause() { if (phase === "play") phase = "paused" }
   function resume() { if (phase === "paused") phase = "play" }
   function togglePause() { if (phase === "play") pause(); else if (phase === "paused") resume() }
+  // A click on the field: same as Enter on ready/over, and it also resumes a pause.
+  function fieldClicked() {
+    if (phase === "over") newGame()
+    else if (phase === "ready") start()
+    else if (phase === "paused") resume()
+  }
 
   // Key releases don't arrive while away: forget held keys, or the skiff would
   // keep turning and thrusting after the game resumes.
@@ -244,12 +254,16 @@ FocusScope {
     invuln = invulnTime
   }
 
-  // A free spot at least safeSpawn from the skiff.
+  // A free spot at least safeSpawn from the skiff — or, while it's dead and
+  // waiting to respawn, from the centre it will respawn at, not from wherever
+  // it happened to die.
   function freeSpot() {
     var x = 0, y = 0
+    var refX = shipAlive ? shipX : fieldW / 2
+    var refY = shipAlive ? shipY : fieldH / 2
     for (var tries = 0; tries < 40; tries++) {
       x = rand() * fieldW; y = rand() * fieldH
-      if (dist(x, y, shipX, shipY) >= safeSpawn) break
+      if (dist(x, y, refX, refY) >= safeSpawn) break
     }
     return { x: x, y: y }
   }
@@ -263,7 +277,8 @@ FocusScope {
   }
 
   function makeMine(x, y, vx, vy) {
-    var m = { x: wrapX(x), y: wrapY(y), vx: vx, vy: vy, armed: false, towed: false, flung: 0, noRam: 0, dead: false }
+    var m = { x: wrapX(x), y: wrapY(y), vx: vx, vy: vy, armed: false, towed: false, flung: 0, noRam: 0,
+              armGrace: 0, dead: false }
     mines.push(m)
     return m
   }
@@ -285,14 +300,14 @@ FocusScope {
     storm = ""; windX = 0; windY = 0
     waveTime = 0
     interT = 0
-    flash("WAVE " + n)
+    flash("Wave " + n)
   }
 
   function waveClear() {
     addScore(250 * wave)
     interT = waveDelay
     carrierT = -1; stormT = -1; storm = ""
-    flash("WAVE " + wave + " CLEAR  +" + (250 * wave))
+    flash("Wave " + wave + " clear  +" + (250 * wave))
   }
 
   function killShip() {
@@ -352,6 +367,11 @@ FocusScope {
   // carrier and hurts the skiff inside its radius.
   function explodeMine(m, mult) {
     if (m.dead) return
+    // Towed or (still) flung, this mine is on the skiff's own side: its blast
+    // must not kill the skiff that was just carrying or throwing it, even
+    // when the ram happens at point-blank range. Read this before dead/tetherIdle
+    // touch the flags below.
+    var friendly = m.towed || m.flung > 0
     m.dead = true
     if (m === towed) tetherIdle()
     var pts = Space.MINE_POINTS * mult
@@ -360,7 +380,7 @@ FocusScope {
     blasts.push({ x: m.x, y: m.y, life: 0.5, dead: false })
     burst(m.x, m.y, 16, 150)
     var chain = mult > 0 ? 1 : 0
-    if (shipAlive && dist(m.x, m.y, shipX, shipY) < blastR + shipR) killShip()
+    if (shipAlive && !friendly && dist(m.x, m.y, shipX, shipY) < blastR + shipR) killShip()
     var i, n = mines.length
     for (i = 0; i < n; i++) if (!mines[i].dead && dist(m.x, m.y, mines[i].x, mines[i].y) < blastR) explodeMine(mines[i], chain)
     n = debris.length
@@ -423,8 +443,14 @@ FocusScope {
     o.flung = flingTime
   }
 
+  // Letting go of a mine (dropped, ran out or snapped) leaves it close to the
+  // skiff; give it a moment before it can re-arm, or it homes in from point
+  // blank the instant it's off the line.
   function tetherIdle() {
-    if (towed) towed.towed = false
+    if (towed) {
+      towed.towed = false
+      if (isMine(towed)) towed.armGrace = mineDropGrace
+    }
     towed = null
     if (tether !== "idle") tetherCd = tetherCooldown
     tether = "idle"
@@ -617,7 +643,7 @@ FocusScope {
       // A towed or flung mine is on the skiff's side: it neither arms nor homes.
       if (!m.towed && m.flung <= 0) {
         var ex = dx(m.x, shipX), ey = dy(m.y, shipY), d = Math.hypot(ex, ey)
-        if (!m.armed && shipAlive && d < mineArmRange) m.armed = true
+        if (!m.armed && shipAlive && d < mineArmRange && m.armGrace <= 0) m.armed = true
         if (m.armed && shipAlive && d > 0.001) {
           m.vx += ex / d * mineAccel * dt; m.vy += ey / d * mineAccel * dt
         } else if (m.armed) {
@@ -630,6 +656,7 @@ FocusScope {
       m.x = wrapX(m.x + m.vx * dt); m.y = wrapY(m.y + m.vy * dt)
       if (m.flung > 0) m.flung = Math.max(0, m.flung - dt)
       if (m.noRam > 0) m.noRam = Math.max(0, m.noRam - dt)
+      if (m.armGrace > 0) m.armGrace = Math.max(0, m.armGrace - dt)
     }
   }
 
@@ -762,11 +789,11 @@ FocusScope {
     function onStateChanged() { if (Qt.application.state !== Qt.ApplicationActive) game.lostFocus() }
   }
 
-  // Held keys are flags read by step(); auto-repeat is ignored because holding
-  // is already handled (Space auto-fires on its own cooldown).
-  Keys.onPressed: function (e) {
-    if (e.isAutoRepeat) { e.accepted = true; return }
-    switch (e.key) {
+  // What a key does, pulled out of the event handler so the rules test can drive
+  // it directly (Keys.onPressed's KeyEvent can't be built from plain JS). Returns
+  // true when the key meant something, so the caller knows to accept the event.
+  function keyDown(key) {
+    switch (key) {
     case Qt.Key_Left: case Qt.Key_A: leftHeld = true; break
     case Qt.Key_Right: case Qt.Key_D: rightHeld = true; break
     case Qt.Key_Up: case Qt.Key_W: thrustHeld = true; break
@@ -778,15 +805,22 @@ FocusScope {
     case Qt.Key_Shift: case Qt.Key_Down: case Qt.Key_S: tetherAction(); break
     case Qt.Key_P: togglePause(); break
     case Qt.Key_Return: case Qt.Key_Enter:
-      if (phase === "over") { newGame(); start() }
+      if (phase === "over") newGame()
       else if (phase === "ready") start()
       else if (phase === "paused") resume()
       else if (phase === "play") fire()
       break
     case Qt.Key_Escape: quitRequested(); break
-    default: return
+    default: return false
     }
-    e.accepted = true
+    return true
+  }
+
+  // Held keys are flags read by step(); auto-repeat is ignored because holding
+  // is already handled (Space auto-fires on its own cooldown).
+  Keys.onPressed: function (e) {
+    if (e.isAutoRepeat) { e.accepted = true; return }
+    if (keyDown(e.key)) e.accepted = true
   }
   Keys.onReleased: function (e) {
     if (e.isAutoRepeat) return
@@ -1082,20 +1116,24 @@ FocusScope {
       }
     }
     Repeater {
+      id: popupView
       model: game.popups.length
       delegate: Text {
         required property int index
         x: game.popupAt(index).x - width / 2; y: game.popupAt(index).y - 10
         text: game.popupAt(index).text
-        color: game.color("green", "#9ece6a")
+        color: game.color("bright_foreground", "#c0caf5")
         opacity: Math.min(1, game.popupAt(index).life * 2)
         font.pixelSize: 14; font.bold: true; font.family: "monospace"
       }
     }
 
     // HUD
-    Item {
-      width: parent.width; height: 40
+    Rectangle {
+      width: parent.width; height: 48
+      color: game.color("lighter_background", "#24283b")
+      radius: 6
+      opacity: 0.85
       Row {
         anchors.verticalCenter: parent.verticalCenter
         anchors.left: parent.left; anchors.leftMargin: 16
@@ -1113,13 +1151,14 @@ FocusScope {
         anchors.right: parent.right; anchors.rightMargin: 16
         spacing: 6
         Text {
+          id: tetherLabel
           anchors.verticalCenter: parent.verticalCenter
           rightPadding: 10
           text: game.tether === "tow" ? "TOW " + Math.max(0, game.towLeft).toFixed(1)
               : game.tether === "cast" ? "CAST"
               : game.tetherCd > 0 ? "REEL" : "TETHER"
-          color: game.tether === "tow" ? game.color("green", "#9ece6a")
-               : game.tetherCd > 0 ? game.color("foreground", "#a9b1d6") : game.color("cyan", "#7dcfff")
+          color: game.tether === "tow" ? game.color("bright_foreground", "#c0caf5")
+               : game.tetherCd > 0 ? game.color("foreground", "#a9b1d6") : game.color("accent", "#7aa2f7")
           opacity: game.tetherCd > 0 && game.tether === "idle" ? 0.5 : 1
           font.pixelSize: 14; font.bold: true; font.family: "monospace"
         }
@@ -1167,14 +1206,15 @@ FocusScope {
             : game.phase === "paused" ? "PAUSED"
             : game.phase === "ready" ? "TETHERWAKE"
             : game.banner
-        color: game.phase === "ready" ? game.color("accent", "#7aa2f7") : game.color("bright_foreground", "#c0caf5")
+        color: game.color("bright_foreground", "#c0caf5")
         font.pixelSize: game.phase === "play" ? 26 : 40; font.bold: true; font.family: "monospace"
       }
       Text {
+        id: subtitleText
         anchors.horizontalCenter: parent.horizontalCenter
-        text: game.phase === "over" ? "Score " + game.score + " · wave " + game.wave + (game.beatHigh ? "  ·  new high score!" : "") + "\nEnter to play again  ·  Esc to quit"
+        text: game.phase === "over" ? "Score " + game.score + "  ·  Wave " + game.wave + (game.beatHigh ? "  ·  new high score!" : "") + "\nEnter to play again  ·  Esc to quit"
             : game.phase === "paused" ? "P or Space to resume  ·  Esc to quit"
-            : game.phase === "ready" ? "Space to launch\n← → turn  ·  ↑ thrust  ·  Space fire  ·  P pause\nShift or ↓ casts the tether: tow wreckage into hazards,\ncast again to fling it for triple points"
+            : game.phase === "ready" ? "Space to launch\n← → or A/D turn  ·  ↑ or W thrust  ·  Space fire  ·  P pause\nShift, ↓ or S casts the tether: tow wreckage into hazards,\ncast again to fling it for triple points"
             : ""
         visible: text !== ""
         horizontalAlignment: Text.AlignHCenter
@@ -1187,9 +1227,7 @@ FocusScope {
       anchors.fill: parent
       onClicked: {
         game.forceActiveFocus()
-        if (game.phase === "over") { game.newGame(); game.start() }
-        else if (game.phase === "ready") game.start()
-        else if (game.phase === "paused") game.resume()
+        game.fieldClicked()
       }
     }
   }

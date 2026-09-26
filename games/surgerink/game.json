@@ -1,8 +1,8 @@
 {
   "id": "surgerink",
   "title": "Surge Rink",
-  "note": "air hockey",
+  "note": "built in",
   "order": 90,
-  "genre": "air hockey duel",
+  "genre": "air-hockey duel",
   "description": "An air-hockey duel to seven goals: charge a surge to smash the puck, swerve it with glancing hits, and climb the CPU tiers or play a friend."
 }
