@@ -156,6 +156,11 @@ Rules:
 - **No protected names, characters or signature moves** anywhere in the game's files
   or UI. `tests/run.sh` greps for many of them and fails the build.
 - **Original characters and art.**
+- **No real people.** Don't use a real person's name, nickname or likeness (right of
+  publicity, as in *Keller v. EA* in 2013). Real-world *statistics* may shape invented
+  characters, but only as anonymous averages across several people, as Super MMA
+  Fighter does. Don't use sports leagues' or promotions' marks either (e.g. UFC, "the
+  Octagon").
 - **Original level or maze layouts.** Never trace a classic one.
 - **Distinct presentation from the famous original:** different proportions,
   different piece colors and palette, different signature features. The per-genre

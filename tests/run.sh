@@ -88,6 +88,8 @@ if want repo; then
   # Our games are our own: no protected game names, characters or signature
   # moves anywhere in a game's files (docs/GAMES.md, "Legal").
   marks='pac-?man|puck-?man|galaga|galaxian|tetris|tetromino|candy ?crush|street ?fighter|hadou?ken|shoryuken|sonic ?boom|arkanoid|space ?invaders|asteroids|frogger|centipede|donkey ?kong|blinky|pinky|inky|clyde|chun-?li|m\.? ?bison'
+  # Super MMA Fighter's fighters are invented: no real fighter, promotion or its marks.
+  marks+='|nurmagomedov|makhachev|mcgregor|topuria|jon ?jones|st-?pierre|shevchenko|anderson ?silva|adesanya|pereira|ngannou|aspinall|amanda ?nunes|oliveira|rousey|kayla ?harrison|dvalishvili|\bufc\b|octagon|zuffa'
   if grep -rIliE "$marks" "$ROOT/games" >"$T/marks"; then
     grep -rIniE "$marks" "$ROOT/games" | head -n 10
     tfail "a built-in game uses a protected name (see docs/GAMES.md)"
