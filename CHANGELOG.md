@@ -1,5 +1,11 @@
 # Changelog
 
+## 0.2.0
+
+- MAME now installs itself: the first MAME game you pick opens a terminal that installs it, then starts the game.
+- New command arcade install-mame, and install.sh installs MAME when run in a terminal.
+- Sharper marketplace preview taken from real Brick Blitz play.
+
 ## 0.1.0
 
 - Brick Blitz, an original brick-breaker, plays straight from the bar with nothing else to install.

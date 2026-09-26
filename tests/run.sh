@@ -12,6 +12,7 @@ trap 'rm -rf "$T"' EXIT
 export HOME="$T/home" XDG_CONFIG_HOME="$T/config" XDG_STATE_HOME="$T/state" XDG_CACHE_HOME="$T/cache"
 export STUB_LOG="$T/stub.log"
 export ARCADE_MAME="$ROOT/tests/stubs/mame" ARCADE_NOTIFY="$ROOT/tests/stubs/record" ARCADE_QUICKSHELL="$ROOT/tests/stubs/record"
+export ARCADE_PKG_ADD="$ROOT/tests/stubs/pkg-add" ARCADE_LAUNCH_TUI="$ROOT/tests/stubs/record" ARCADE_INTERACTIVE=0
 mkdir -p "$HOME" "$XDG_CONFIG_HOME" "$XDG_STATE_HOME" "$XDG_CACHE_HOME"
 A="$ROOT/bin/arcade"
 
@@ -81,10 +82,46 @@ if want cli; then
   echo "== cli: bin/arcade"
   ROMS="$HOME/Games/arcade"
 
+  # MAME installs itself on first play.
+  NOMAME="$T/bin/mame"                       # where the stub "installs" it
   reset_log
-  ARCADE_MAME=/nonexistent expect_exit 3 "no MAME: exits 3" -- "$A" play pacman
-  logged "needs MAME" && logged "pacman -S mame" || tfail "no-MAME notification"
-  pass "no MAME: notification says how to install it"
+  ARCADE_MAME=$NOMAME expect_exit 0 "no MAME, from the bar: opens the installer" -- "$A" play pacman
+  wait_for_log() { local n=30; while (( n-- > 0 )); do logged "$1" && return 0; sleep 0.1; done; return 1; }
+  wait_for_log "record --app-id=TUI.float /usr/bin/bash $A install-mame --then pacman" || tfail "installer terminal argv"
+  logged "Installing MAME first" || tfail "installer notification"
+  pass "no MAME, from the bar: a terminal runs install-mame --then pacman"
+
+  reset_log
+  ARCADE_MAME=$NOMAME STUB_PKG_INSTALL_TO=$NOMAME expect_exit 0 "install-mame installs MAME" -- "$A" install-mame
+  logged "pkg-add mame" && [[ -x $NOMAME ]] || tfail "install-mame should run omarchy-pkg-add mame"
+  pass "install-mame runs omarchy-pkg-add mame"
+  ARCADE_MAME=$NOMAME expect_exit 0 "install-mame when MAME is there" -- "$A" install-mame
+  grep -q 'already installed' "$T/out" || tfail "install-mame should say MAME is already there"
+  rm -f "$NOMAME"
+
+  reset_log
+  ARCADE_MAME=$NOMAME STUB_PKG_FAIL=1 expect_exit 1 "install-mame: a failed install exits 1" -- "$A" install-mame --then galaga
+  grep -q 'did not install' "$T/out" && ! logged "play galaga" || tfail "failed install must not start the game"
+  pass "a failed install says so and starts nothing"
+
+  reset_log
+  ARCADE_MAME=$NOMAME STUB_PKG_INSTALL_TO=$NOMAME expect_exit 0 "install-mame --then: installs" -- "$A" install-mame --then galaga
+  # The game starts detached; with no ROM folder yet, it says so.
+  wait_for_log "Galaga: no ROM folder" || tfail "install-mame --then should start the game"
+  pass "install-mame --then starts the picked game on its own"
+  rm -f "$NOMAME"
+  expect_exit 2 "install-mame --then an unknown game: exits 2" -- "$A" install-mame --then nope
+
+  reset_log
+  ARCADE_MAME=$NOMAME ARCADE_INTERACTIVE=1 STUB_PKG_INSTALL_TO=$NOMAME expect_exit 4 "no MAME, at a terminal: installs inline, then checks ROMs" -- "$A" play galaga
+  logged "pkg-add mame" && [[ -x $NOMAME ]] || tfail "inline install"
+  pass "no MAME, at a terminal: installs inline and carries on"
+  rm -f "$NOMAME"
+
+  reset_log
+  ARCADE_MAME=$NOMAME ARCADE_LAUNCH_TUI=/nonexistent expect_exit 3 "no MAME, no terminal launcher: exits 3" -- "$A" play pacman
+  logged "arcade install-mame" || tfail "fallback notification should name arcade install-mame"
+  pass "no MAME and no launcher: notification names arcade install-mame"
 
   expect_exit 4 "no ROM folder: exits 4" -- "$A" play galaga
   mkdir -p "$ROMS"
@@ -144,8 +181,12 @@ if want install; then
   "$ROOT/install.sh" >"$T/inst" || tfail "install.sh"
   grep -q 'Brick Blitz' "$T/inst" && [[ -d $XDG_CONFIG_HOME/omarchy-arcade && -d $HOME/Games/arcade ]] || tfail "install.sh output or folders"
   pass "install.sh creates Arcade's folders and reports"
-  ARCADE_MAME=/nonexistent "$ROOT/install.sh" | grep -q 'pacman -S mame' || tfail "install.sh without MAME"
-  pass "install.sh explains MAME when it is missing"
+  ARCADE_MAME=/nonexistent "$ROOT/install.sh" | grep -q 'installs automatically' || tfail "install.sh without MAME, no terminal"
+  pass "install.sh with no terminal: says MAME installs on first play"
+  reset_log
+  ARCADE_MAME="$T/bin2/mame" STUB_PKG_INSTALL_TO="$T/bin2/mame" ARCADE_INTERACTIVE=1 "$ROOT/install.sh" >"$T/inst2" || tfail "install.sh at a terminal"
+  logged "pkg-add mame" && grep -q 'is installed' "$T/inst2" || { cat "$T/inst2"; tfail "install.sh at a terminal should install MAME"; }
+  pass "install.sh at a terminal installs MAME"
   mkdir -p "$XDG_STATE_HOME/omarchy-arcade/mame"
   echo '{"high": 900}' >"$XDG_STATE_HOME/omarchy-arcade/brick.json"
   : >"$HOME/Games/arcade/mine.zip"

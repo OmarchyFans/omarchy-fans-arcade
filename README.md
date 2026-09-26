@@ -5,7 +5,8 @@ Arcade games from your Omarchy bar.
 - **Brick Blitz**, an original brick-breaker, plays the moment you install. You don't
   need anything else.
 - **Pac-Man**, **Galaga** and **Super Street Fighter II** launch in MAME from your own
-  ROM files. Arcade checks them first and tells you exactly what's missing.
+  ROM files. Arcade installs MAME for you the first time you pick one, checks your ROMs
+  and tells you exactly what's missing.
 
 An Omarchy.Fans product by ModPunk. MIT licensed, free, no account.
 
@@ -20,9 +21,9 @@ omarchy plugin add https://github.com/OmarchyFans/omarchy-fans-arcade --enable
 
 This puts the gamepad chip in your bar. Click it and pick a game.
 
-Optionally, run the plugin's `install.sh` once. It creates Arcade's folders ahead of time
-and tells you what's ready. It installs no packages and changes nothing outside its own
-folders. Arcade works without it too.
+Optionally, run the plugin's `install.sh` once in a terminal. It creates Arcade's folders
+ahead of time, installs MAME, and tells you what's ready. Arcade works without it too:
+MAME then installs itself the first time you pick a MAME game.
 
 ## Removal
 
@@ -57,7 +58,11 @@ problem in the game can't affect your desktop.
 
 These run in [MAME](https://www.mamedev.org/), the open-source arcade emulator.
 
-1. Install MAME with your package manager: `pacman -S mame`.
+1. **MAME installs itself.** The first time you pick one of these games, Arcade opens a
+   small terminal that installs MAME (about 460 MiB) from the official Arch repositories.
+   It uses Omarchy's own `omarchy-pkg-add mame`, so your password may be asked for. When
+   it's done, the game you picked starts. You can also install it yourself any time with
+   `arcade install-mame`.
 2. Put **your own** ROM files in `~/Games/arcade/`. The chip's *Open ROM folder* button
    opens it.
 
@@ -82,6 +87,7 @@ The plugin ships `bin/arcade`:
 arcade play brick|pacman|galaga|ssf2
 arcade list
 arcade rom-dir [--open]
+arcade install-mame
 ```
 
 ## Updates
@@ -97,8 +103,12 @@ To turn the check off, set `"update_check": false` in
 
 ## What leaves your machine
 
-Only the update check: a request for this repository's `manifest.json`, plus
-`CHANGELOG.md` when a newer version is out. Games, scores and ROMs stay local.
+- **The update check:** a request for this repository's `manifest.json`, plus
+  `CHANGELOG.md` when a newer version is out.
+- **Installing MAME, once:** pacman downloads the `mame` package from your configured
+  Arch mirrors, like any other package.
+
+Games, scores and ROMs stay local.
 
 ## Roadmap
 

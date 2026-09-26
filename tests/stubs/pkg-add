@@ -1,0 +1,12 @@
+#!/bin/bash
+# Stand-in for omarchy-pkg-add in tests/run.sh.
+#   STUB_PKG_FAIL=1         fail, like a cancelled password prompt
+#   STUB_PKG_INSTALL_TO     path where "installing mame" puts the stub mame
+printf '%s\n' "pkg-add $*" >>"${STUB_LOG:-/dev/null}"
+[[ ${STUB_PKG_FAIL:-0} == 1 ]] && exit 1
+if [[ -n ${STUB_PKG_INSTALL_TO:-} ]]; then
+  mkdir -p "$(dirname "$STUB_PKG_INSTALL_TO")"
+  cp "$(dirname "$0")/mame" "$STUB_PKG_INSTALL_TO"
+  chmod +x "$STUB_PKG_INSTALL_TO"
+fi
+exit 0

@@ -6,12 +6,14 @@
 #   arcade play pacman|galaga|ssf2        a MAME game, from your own ROM files
 #   arcade list                           what is ready to play, and what is missing
 #   arcade rom-dir [--open]               print (and create) the ROM folder; --open shows it
+#   arcade install-mame [--then GAME]     install MAME now (then start GAME)
 #   arcade help                           this text
 #   arcade update-check|update-dismiss|update-run ...   see lib/update.sh
 #
-# Arcade never downloads, links to, or ships ROMs. MAME games need MAME installed
-# (pacman -S mame) and your own ROM zips in the ROM folder, ~/Games/arcade unless
-# "rom_dir" in ~/.config/omarchy-arcade/config.json says otherwise.
+# MAME installs itself the first time you pick a MAME game: Arcade opens a terminal
+# that runs Omarchy's own `omarchy-pkg-add mame` (your password may be asked), then
+# starts the game. Arcade never downloads, links to, or ships ROMs: put your own ROM
+# zips in ~/Games/arcade, or set "rom_dir" in ~/.config/omarchy-arcade/config.json.
 #
 # Every tool is an absolute path or comes from root-owned system folders, never the
 # caller's PATH. The ARCADE_* variables exist for the test suite.
@@ -25,6 +27,8 @@ STATE="${XDG_STATE_HOME:-$HOME/.local/state}/omarchy-arcade"
 MAME="${ARCADE_MAME:-/usr/bin/mame}"
 QUICKSHELL="${ARCADE_QUICKSHELL:-/usr/bin/quickshell}"
 NOTIFY="${ARCADE_NOTIFY:-/usr/bin/notify-send}"
+PKG_ADD="${ARCADE_PKG_ADD:-/usr/bin/omarchy-pkg-add}"
+LAUNCH_TUI="${ARCADE_LAUNCH_TUI:-/usr/bin/omarchy-launch-tui}"
 
 GAMES=(brick pacman galaga ssf2)
 
@@ -92,12 +96,69 @@ play_brick() {
   exec "$QUICKSHELL" -n -p "$ARCADE_DIR/game/shell.qml"
 }
 
+# Is someone at a terminal to answer a password prompt? ARCADE_INTERACTIVE=0|1
+# overrides the check for the test suite.
+interactive() {
+  case "${ARCADE_INTERACTIVE:-}" in
+    1) return 0 ;;
+    0) return 1 ;;
+  esac
+  [[ -t 0 && -t 1 ]]
+}
+
+hold() { # keep a terminal Arcade opened on screen until the message is read
+  interactive && read -rp "$1 Press Enter to close " _ || true
+}
+
+# Install MAME from the official Arch repositories with Omarchy's own helper,
+# which asks for the password itself. Returns non-zero if MAME is still missing.
+install_mame() {
+  if [[ -x $MAME ]]; then
+    echo "MAME is already installed ($(mame_version))."
+    return 0
+  fi
+  echo "Arcade is installing MAME, the arcade emulator, from the official Arch"
+  echo "repositories (about 460 MiB). Your password may be asked for."
+  echo
+  if ! "$PKG_ADD" mame || [[ ! -x $MAME ]]; then
+    echo
+    echo "MAME did not install. Try again any time with: arcade install-mame"
+    return 1
+  fi
+  echo
+  echo "MAME $(mame_version) is installed."
+}
+
+cmd_install_mame() {
+  local then=""
+  if [[ ${1:-} == --then ]]; then then=${2:-}; fi
+  if [[ -n $then ]] && ! game_title "$then" >/dev/null; then
+    echo "arcade: unknown game '$then'" >&2; return 2
+  fi
+  install_mame || { hold "Nothing was started."; return 1; }
+  [[ -n $then ]] || return 0
+  # Start the game on its own, so this terminal can close; if a ROM is missing,
+  # the game's notification says which one.
+  echo "Starting $(game_title "$then")…"
+  setsid -f /usr/bin/bash "$SELF" play "$then" >/dev/null 2>&1 </dev/null
+  sleep 1
+}
+
 play_mame() {
   local id=$1 title dir out bad
   title=$(game_title "$id")
   if [[ ! -x $MAME ]]; then
-    say "$title needs MAME" "Install it with your package manager: pacman -S mame. Then add your own $id.zip to $(rom_dir)."
-    return 3
+    if interactive; then
+      install_mame || return 3
+    elif [[ -x $LAUNCH_TUI ]]; then
+      # Picked from the bar: install in a terminal, where the password can be typed.
+      setsid -f "$LAUNCH_TUI" --app-id=TUI.float /usr/bin/bash "$SELF" install-mame --then "$id" >/dev/null 2>&1 </dev/null
+      say "$title" "Installing MAME first, in the terminal that just opened. The game starts when it's done."
+      return 0
+    else
+      say "$title needs MAME" "Open a terminal and run: arcade install-mame"
+      return 3
+    fi
   fi
   dir=$(rom_dir)
   if [[ ! -d $dir ]]; then
@@ -140,7 +201,7 @@ cmd_list() {
     if [[ $id == brick ]]; then
       status="ready"
     elif [[ ! -x $MAME ]]; then
-      status="needs MAME (pacman -S mame)"
+      status="MAME installs on first play"
     elif have_rom "$id" "$dir"; then
       status="ROM found in $dir"
     else
@@ -164,10 +225,11 @@ main() {
     play)           shift; cmd_play "$@" ;;
     list)           cmd_list ;;
     rom-dir)        shift; cmd_rom_dir "$@" ;;
+    install-mame)   shift; cmd_install_mame "$@" ;;
     update-check)   shift; exec /usr/bin/bash "$ARCADE_DIR/lib/update.sh" check "$@" ;;
     update-dismiss) shift; exec /usr/bin/bash "$ARCADE_DIR/lib/update.sh" dismiss "$@" ;;
     update-run)     shift; exec /usr/bin/bash "$ARCADE_DIR/lib/update.sh" run "$@" ;;
-    help|-h|--help) sed -n '3,17p' "$SELF" | sed 's/^# \{0,1\}//' ;;
+    help|-h|--help) sed -n '3,19p' "$SELF" | sed 's/^# \{0,1\}//' ;;
     *) echo "arcade: unknown command '$1' (try: arcade help)" >&2; return 2 ;;
   esac
 }

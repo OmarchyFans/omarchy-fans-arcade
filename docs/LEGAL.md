@@ -16,9 +16,12 @@ feature that involves shipping content.
 
 - **Brick Blitz**, an original game written for Arcade under the MIT license. It is not a
   copy of any commercial title and doesn't use one's name, art or code.
-- **Launchers** that start MAME, which the user installs from their own distribution,
-  with ROM files the user supplies. Arcade checks those files with MAME's own
-  `-verifyroms`. It never downloads, links to or bundles them.
+- **Launchers** that start MAME with ROM files the user supplies. Arcade checks those
+  files with MAME's own `-verifyroms`. It never downloads, links to or bundles them.
+- **An installer step for MAME itself.** On first play, Arcade asks Omarchy's
+  `omarchy-pkg-add` to install the `mame` package from the official Arch repositories on
+  the user's machine. Arcade doesn't redistribute MAME: the user's own package manager
+  fetches it from their distribution, under MAME's own license.
 
 ## Why
 

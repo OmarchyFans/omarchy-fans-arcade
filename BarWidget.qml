@@ -189,7 +189,7 @@ BarWidget {
       }
       Text {
         width: parent.width; wrapMode: Text.Wrap; textFormat: Text.PlainText
-        text: "MAME games need MAME (pacman -S mame) and your own ROM files. Arcade never downloads games."
+        text: "The first MAME game you pick installs MAME for you (your password may be asked). Bring your own ROM files: Arcade never downloads games."
         color: Color.popups.text; opacity: 0.6; font.family: Style.font.family; font.pixelSize: Style.font.caption
       }
       Button { text: "Open ROM folder"; foreground: Color.popups.text; onClicked: root.arcade(["rom-dir", "--open"]) }
