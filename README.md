@@ -22,7 +22,7 @@ omarchy plugin add https://github.com/OmarchyFans/omarchy-fans-arcade --enable
 This puts the gamepad chip in your bar. Click it and pick a game.
 
 Optionally, run the plugin's `install.sh` once in a terminal. It creates Arcade's folders
-ahead of time, installs MAME, and tells you what's ready. Arcade works without it too:
+ahead of time, offers to install MAME, and tells you what's ready. Arcade works without it too:
 MAME then installs itself the first time you pick a MAME game.
 
 ## Removal

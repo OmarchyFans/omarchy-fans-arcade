@@ -21,8 +21,14 @@ interactive() { # same rule as bin/arcade; ARCADE_INTERACTIVE=0|1 is for the tes
 mkdir -p "$CONFIG_DIR" "$STATE_DIR"
 ROMS=$(/usr/bin/bash "$DIR/bin/arcade" rom-dir)
 
+# install.sh also runs inside the plugin's update terminal, so ask before a
+# 460 MiB install: someone who only plays Brick Blitz may not want MAME yet.
 if [[ ! -x $MAME ]] && interactive; then
-  /usr/bin/bash "$DIR/bin/arcade" install-mame || true
+  ans=""
+  read -rp "Install MAME now, for Pac-Man, Galaga and Super Street Fighter II (about 460 MiB)? [Y/n] " ans || true
+  if [[ ! $ans =~ ^[nN] ]]; then
+    /usr/bin/bash "$DIR/bin/arcade" install-mame --no-hold || true
+  fi
   echo
 fi
 

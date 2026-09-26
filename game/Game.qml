@@ -93,6 +93,7 @@ FocusScope {
   readonly property alias brickModel: bricks   // for tests/game_test.qml
   readonly property alias ballView: ballView
   readonly property alias capsuleView: capsuleView
+  readonly property bool catchCountdown: catchTimer.running
 
   function loadLevel() {
     bricks.clear()
@@ -151,9 +152,20 @@ FocusScope {
     loadLevel()
   }
 
+  // A caught ball's release timer must not run out during a pause.
+  function pause() {
+    if (phase !== "play") return
+    phase = "paused"
+    catchTimer.stop()
+  }
+  function resume() {
+    if (phase !== "paused") return
+    phase = "play"
+    if (anyStuck()) catchTimer.restart()
+  }
   function togglePause() {
-    if (phase === "play") phase = "paused"
-    else if (phase === "paused") phase = "play"
+    if (phase === "play") pause()
+    else if (phase === "paused") resume()
   }
 
   function addScore(points) {
@@ -406,9 +418,14 @@ FocusScope {
   // Pause when the window loses focus mid-rally.
   Connections {
     target: Qt.application
-    function onStateChanged() {
-      if (Qt.application.state !== Qt.ApplicationActive && game.phase === "play") game.phase = "paused"
-    }
+    function onStateChanged() { if (Qt.application.state !== Qt.ApplicationActive) game.lostFocus() }
+  }
+  // Key releases don't arrive while away: forget held keys, or the paddle would
+  // keep drifting after the game resumes.
+  function lostFocus() {
+    leftHeld = false
+    rightHeld = false
+    pause()
   }
 
   Keys.onPressed: function (e) {

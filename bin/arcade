@@ -135,12 +135,21 @@ install_mame() {
 }
 
 cmd_install_mame() {
-  local then=""
-  if [[ ${1:-} == --then ]]; then then=${2:-}; fi
+  local then="" keep=1
+  while (( $# )); do
+    case "$1" in
+      --then) then=${2:-}; shift ;;
+      --no-hold) keep=0 ;;               # a caller (install.sh) carries on by itself
+    esac
+    shift
+  done
   if [[ -n $then ]] && ! game_title "$then" >/dev/null; then
     echo "arcade: unknown game '$then'" >&2; return 2
   fi
-  install_mame || { hold "Nothing was started."; return 1; }
+  if ! install_mame; then
+    (( keep )) && hold "Nothing was started."
+    return 1
+  fi
   [[ -n $then ]] || return 0
   # Start the game on its own, so this terminal can close; if a ROM is missing,
   # the game's notification says which one.

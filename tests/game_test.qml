@@ -211,6 +211,25 @@ ShellRoot {
     g.applyPowerUp("wide")
     check("a new mode replaces catch", g.paddleMode === "wide", g.paddleMode)
 
+    // A pause holds a caught ball's release countdown; resuming restarts it.
+    fresh(g)
+    g.applyPowerUp("catch")
+    g.paddleX = 300
+    put(ball(g), 300 + g.paddleW / 2, g.paddleY - g.ballR - 3, 0, 300)
+    run(g, 0.1, function () { return ball(g).stuck })
+    check("catching starts the release countdown", ball(g).stuck && g.catchCountdown)
+    g.togglePause()
+    check("a pause stops the countdown", g.phase === "paused" && !g.catchCountdown)
+    g.togglePause()
+    check("resuming restarts the countdown", g.phase === "play" && g.catchCountdown)
+
+    // Losing focus pauses and forgets held keys.
+    fresh(g)
+    g.leftHeld = true
+    g.lostFocus()
+    check("losing focus pauses", g.phase === "paused", g.phase)
+    check("losing focus forgets held keys", !g.leftHeld && !g.rightHeld)
+
     fresh(g)
     g.applyPowerUp("laser")
     g.paddleX = 300

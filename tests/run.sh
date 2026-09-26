@@ -200,9 +200,19 @@ if want install; then
   ARCADE_MAME=/nonexistent "$ROOT/install.sh" | grep -q 'installs automatically' || tfail "install.sh without MAME, no terminal"
   pass "install.sh with no terminal: says MAME installs on first play"
   reset_log
-  ARCADE_MAME="$T/bin2/mame" STUB_PKG_INSTALL_TO="$T/bin2/mame" ARCADE_INTERACTIVE=1 "$ROOT/install.sh" >"$T/inst2" || tfail "install.sh at a terminal"
+  # At a terminal (also the plugin's update terminal) install.sh asks first.
+  reset_log
+  echo n | ARCADE_MAME="$T/bin2/mame" STUB_PKG_INSTALL_TO="$T/bin2/mame" ARCADE_INTERACTIVE=1 "$ROOT/install.sh" >"$T/inst2" || tfail "install.sh, declined"
+  ! logged "pkg-add" && grep -q 'installs automatically' "$T/inst2" || { cat "$T/inst2"; tfail "declining should skip MAME"; }
+  pass "install.sh asks first, and n skips MAME"
+  reset_log
+  echo | STUB_PKG_FAIL=1 ARCADE_MAME="$T/bin2/mame" ARCADE_INTERACTIVE=1 "$ROOT/install.sh" >"$T/inst2" || tfail "install.sh must carry on after a cancelled install"
+  ! grep -q 'Press Enter' "$T/inst2" && grep -q 'Arcade is ready' "$T/inst2" || { cat "$T/inst2"; tfail "a cancelled install should not stop install.sh"; }
+  pass "a cancelled install doesn't stop install.sh"
+  reset_log
+  echo y | ARCADE_MAME="$T/bin2/mame" STUB_PKG_INSTALL_TO="$T/bin2/mame" ARCADE_INTERACTIVE=1 "$ROOT/install.sh" >"$T/inst2" || tfail "install.sh at a terminal"
   logged "pkg-add mame" && grep -q 'is installed' "$T/inst2" || { cat "$T/inst2"; tfail "install.sh at a terminal should install MAME"; }
-  pass "install.sh at a terminal installs MAME"
+  pass "install.sh at a terminal installs MAME on yes"
   mkdir -p "$XDG_STATE_HOME/omarchy-arcade/mame"
   echo '{"high": 900}' >"$XDG_STATE_HOME/omarchy-arcade/brick.json"
   : >"$HOME/Games/arcade/mine.zip"
