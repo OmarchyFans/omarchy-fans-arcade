@@ -1,0 +1,8 @@
+{
+  "id": "solder",
+  "title": "Solder Snap",
+  "note": "built in",
+  "order": 50,
+  "genre": "match-three",
+  "description": "Swap circuit parts to line up three or more, build Bus, Surge and Core specials, and bank flux to reroute a 2x2 block for free."
+}

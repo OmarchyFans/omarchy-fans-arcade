@@ -1,0 +1,8 @@
+{
+  "id": "crawl",
+  "title": "Circuit Crawl",
+  "note": "built in",
+  "order": 20,
+  "genre": "maze chase",
+  "description": "Steer Byte the robot along a circuit board's traces collecting bits while four bugs give chase; debug chips make them squashable and coffee overclocks you."
+}

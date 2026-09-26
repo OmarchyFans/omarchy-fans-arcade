@@ -1,0 +1,8 @@
+{
+  "id": "glintfall",
+  "title": "Glintfall",
+  "note": "built in",
+  "order": 40,
+  "genre": "falling blocks",
+  "description": "An original falling-block puzzle in a 12-wide well: fill rows to clear them and set off glinting cells that burst their neighbours in chains."
+}
