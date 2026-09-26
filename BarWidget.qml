@@ -31,16 +31,22 @@ BarWidget {
   }
   readonly property var childEnv: ({ "PATH": "/usr/local/bin:/usr/bin:/bin:/usr/share/omarchy/bin" })
 
-  readonly property var games: [
-    { id: "brick",  title: "Brick Blitz",             note: "built in" },
-    { id: "pacman", title: "Pac-Man",                 note: "MAME · your ROM" },
-    { id: "galaga", title: "Galaga",                  note: "MAME · your ROM" },
-    { id: "ssf2",   title: "Super Street Fighter II", note: "MAME · your ROM" }
+  // The menu lists what `arcade list --json` reports: every built-in game in
+  // games/<id>/ (see docs/GAMES.md), then the MAME games. This fallback shows
+  // until the first answer arrives.
+  readonly property var fallbackGames: [
+    { id: "brick",  title: "Brick Blitz",             kind: "builtin", note: "built in" },
+    { id: "pacman", title: "Pac-Man",                 kind: "mame",    note: "MAME · your ROM" },
+    { id: "galaga", title: "Galaga",                  kind: "mame",    note: "MAME · your ROM" },
+    { id: "ssf2",   title: "Super Street Fighter II", kind: "mame",    note: "MAME · your ROM" }
   ]
+  property var gameRows: []
+  readonly property var games: gameRows.length ? gameRows : fallbackGames
 
   // Which games are ready: `arcade list --json`, read each time the menu opens,
   // so a ROM dropped into the folder shows up without restarting anything.
   property var gameStatus: ({})
+  Component.onCompleted: refreshStatus()
   function refreshStatus() {
     if (statusProc.running) return
     statusProc.command = ["/usr/bin/bash", root.pluginDir + "/bin/arcade", "list", "--json"]
@@ -55,6 +61,7 @@ BarWidget {
         var rows = JSON.parse(String(statusOut.text || "[]")), map = {}
         for (var i = 0; i < rows.length; i++) map[rows[i].id] = rows[i]
         root.gameStatus = map
+        if (rows.length) root.gameRows = rows
       } catch (e) { root.gameStatus = {} }
     }
   }
@@ -202,8 +209,8 @@ BarWidget {
           readonly property bool missingRom: !!live && live.state === "no-rom"
           Button {
             text: modelData.title
-            bordered: modelData.id === "brick"
-            foreground: modelData.id === "brick" ? Color.accent : Color.popups.text
+            bordered: modelData.kind === "builtin"
+            foreground: modelData.kind === "builtin" ? Color.accent : Color.popups.text
             // Still clickable without its ROM: that opens the ROM folder.
             opacity: parent.missingRom ? 0.55 : 1
             onClicked: root.arcade(["play", modelData.id])

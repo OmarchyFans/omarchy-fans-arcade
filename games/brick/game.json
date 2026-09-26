@@ -1,0 +1,8 @@
+{
+  "id": "brick",
+  "title": "Brick Blitz",
+  "note": "built in",
+  "order": 10,
+  "genre": "brick-breaker",
+  "description": "An original brick-breaker with power-ups: wide paddle, catch, laser, slow, multi-ball, extra ball and warp."
+}

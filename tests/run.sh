@@ -76,6 +76,23 @@ if want repo; then
   awk -v v="$v" '$0 == "## " v {f=1; next} /^## /{f=0} f && /^[-*] /{n++} f && /^  +[^ ]/{bad=1} END{exit !(n > 0 && !bad)}' "$ROOT/CHANGELOG.md" \
     || tfail "CHANGELOG $v needs single-line bullets"
   pass "CHANGELOG $v has single-line bullets"
+  # Built-in games: a complete game.json, a shell.qml, and their own rules test.
+  for gj in "$ROOT"/games/*/game.json; do
+    gdir=$(dirname "$gj"); gid=$(basename "$gdir")
+    jq -e --arg id "$gid" '(.id == $id) and (.title | type == "string" and length > 0) and (.note | type == "string")
+        and (.order | type == "number") and (.genre | type == "string") and (.description | type == "string")' "$gj" >/dev/null \
+      || tfail "games/$gid/game.json: needs id (= folder), title, note, order, genre, description"
+    [[ -f $gdir/shell.qml && -f $ROOT/tests/${gid}_test.qml ]] || tfail "games/$gid needs shell.qml and tests/${gid}_test.qml"
+  done
+  pass "every built-in game has a complete game.json, a shell.qml and a rules test"
+  # Our games are our own: no protected game names, characters or signature
+  # moves anywhere in a game's files (docs/GAMES.md, "Legal").
+  marks='pac-?man|puck-?man|galaga|galaxian|tetris|tetromino|candy ?crush|street ?fighter|hadou?ken|shoryuken|sonic ?boom|arkanoid|space ?invaders|asteroids|frogger|centipede|donkey ?kong|blinky|pinky|inky|clyde|chun-?li|m\.? ?bison'
+  if grep -rIliE "$marks" "$ROOT/games" >"$T/marks"; then
+    grep -rIniE "$marks" "$ROOT/games" | head -n 10
+    tfail "a built-in game uses a protected name (see docs/GAMES.md)"
+  fi
+  pass "no protected game names inside games/"
 fi
 
 # ---------------------------------------------------------------------------
@@ -180,14 +197,24 @@ if want cli; then
 
   reset_log
   expect_exit 0 "brick launches" -- "$A" play brick
-  logged "record -n -p $ROOT/game/shell.qml" || tfail "quickshell argv"
+  logged "record -n -p $ROOT/games/brick/shell.qml" || tfail "quickshell argv"
   [[ -d $XDG_STATE_HOME/omarchy-arcade ]] || tfail "state folder for the high score"
   pass "brick: one instance of the game's own Quickshell config"
+  # Every built-in game (games/<id>/game.json) is listed and launches the same way.
+  for gj in "$ROOT"/games/*/game.json; do
+    gid=$(jq -r .id "$gj")
+    jq -e --arg id "$gid" 'map(select(.id == $id and .kind == "builtin" and .state == "ready")) | length == 1' <<<"$("$A" list --json)" >/dev/null \
+      || tfail "$gid is not listed as a ready built-in"
+    reset_log
+    "$A" play "$gid" >/dev/null 2>&1 || tfail "$gid did not launch"
+    logged "record -n -p $ROOT/games/$gid/shell.qml" || tfail "$gid: quickshell argv"
+  done
+  pass "every built-in game is listed and launches ($(find "$ROOT/games" -mindepth 2 -maxdepth 2 -name game.json | wc -l))"
 
   expect_exit 2 "unknown game: exits 2" -- "$A" play nope
   expect_exit 2 "unknown command: exits 2" -- "$A" frobnicate
   "$A" help >"$T/help"
-  grep -q 'arcade play brick' "$T/help" && ! grep -q 'set -euo\|export PATH' "$T/help" || { cat "$T/help"; tfail "help"; }
+  grep -q 'arcade play <game>' "$T/help" && ! grep -q 'set -euo\|export PATH' "$T/help" || { cat "$T/help"; tfail "help"; }
   pass "help prints the usage and no code"
 fi
 
@@ -255,19 +282,29 @@ fi
 
 # ---------------------------------------------------------------------------
 if want game; then
-  echo "== game: Brick Blitz rules, headless"
+  echo "== game: built-in game rules, headless"
   if [[ ! -x /usr/bin/quickshell ]]; then
     skip "quickshell is not installed here"
   else
-    G="$T/game"; mkdir -p "$G"
-    cp "$ROOT"/game/*.qml "$ROOT"/game/*.js "$ROOT/tests/game_test.qml" "$G/"
-    rm -f "$G/shell.qml"          # the test brings its own ShellRoot
-    QT_QPA_PLATFORM=offscreen ARCADE_TEST_OUT="$T/game.json" timeout 30 /usr/bin/quickshell -p "$G/game_test.qml" >/dev/null 2>&1 || true
-    [[ -s $T/game.json ]] || tfail "the game test wrote no result (a QML error? see: quickshell log -p $G/game_test.qml)"
-    failed=$(jq -r '.failed | length' "$T/game.json")
-    passed=$(jq -r '.passed' "$T/game.json")
-    (( failed == 0 )) || { jq -r '.failed[]' "$T/game.json" | sed 's/^/       /'; tfail "$failed game rule(s) failed"; }
-    pass "$passed game rules"
+    # Each games/<id>/ has tests/<id>_test.qml. Quickshell only imports from its
+    # config folder, so the game's files and its test are staged together; the
+    # test brings its own ShellRoot, so the game's shell.qml is left out.
+    for gj in "$ROOT"/games/*/game.json; do
+      gid=$(jq -r .id "$gj")
+      tq="$ROOT/tests/${gid}_test.qml"
+      [[ -f $tq ]] || tfail "$gid has no tests/${gid}_test.qml"
+      G="$T/game-$gid"; mkdir -p "$G"
+      cp -r "$ROOT/games/$gid/." "$G/"
+      cp "$tq" "$G/"
+      rm -f "$G/shell.qml"
+      QT_QPA_PLATFORM=offscreen ARCADE_TEST_OUT="$T/$gid.json" timeout 60 /usr/bin/quickshell -p "$G/${gid}_test.qml" >/dev/null 2>&1 || true
+      [[ -s $T/$gid.json ]] || tfail "$gid: the rules test wrote no result (a QML error? see: quickshell log -p $G/${gid}_test.qml)"
+      failed=$(jq -r '.failed | length' "$T/$gid.json")
+      passed=$(jq -r '.passed' "$T/$gid.json")
+      (( failed == 0 )) || { jq -r '.failed[]' "$T/$gid.json" | sed 's/^/       /'; tfail "$gid: $failed rule(s) failed"; }
+      (( passed >= 20 )) || tfail "$gid: only $passed rules; a built-in game needs at least 20"
+      pass "$gid: $passed game rules"
+    done
   fi
 fi
 

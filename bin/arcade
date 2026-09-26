@@ -2,7 +2,7 @@
 #
 # arcade — launch Arcade games.
 #
-#   arcade play brick                     Brick Blitz (built in, nothing else needed)
+#   arcade play <game>                    a built-in game (games/<id>/), nothing else needed
 #   arcade play pacman|galaga|ssf2        a MAME game, from your own ROM files
 #   arcade list                           what is ready to play, and what is missing
 #   arcade rom-dir [--open]               print (and create) the ROM folder; --open shows it
@@ -31,11 +31,29 @@ PKG_ADD="${ARCADE_PKG_ADD:-/usr/bin/omarchy-pkg-add}"
 LAUNCH_TUI="${ARCADE_LAUNCH_TUI:-/usr/bin/omarchy-launch-tui}"
 OPEN="${ARCADE_OPEN:-/usr/bin/xdg-open}"
 
-GAMES=(brick pacman galaga ssf2)
+MAME_GAMES=(pacman galaga ssf2)
+
+# Built-in games are discovered, not listed here: every games/<id>/game.json with
+# a shell.qml next to it, in "order". An id is lowercase letters, digits and
+# dashes, and matches its folder. See docs/GAMES.md.
+builtin_ids() {
+  local f id dir
+  for f in "$ARCADE_DIR"/games/*/game.json; do
+    [[ -f $f ]] || continue
+    dir=$(basename "$(dirname "$f")")
+    id=$(jq -r '.id // empty' "$f" 2>/dev/null) || continue
+    [[ $id =~ ^[a-z0-9-]+$ && $id == "$dir" && -f $ARCADE_DIR/games/$id/shell.qml ]] || continue
+    printf '%s\t%s\n' "$(jq -r '.order // 100' "$f")" "$id"
+  done | sort -n -k1,1 | cut -f2
+}
+is_builtin() { [[ $1 =~ ^[a-z0-9-]+$ ]] && builtin_ids | grep -qx -- "$1"; }
+is_mame() { local g; for g in "${MAME_GAMES[@]}"; do [[ $g == "$1" ]] && return 0; done; return 1; }
+all_games() { builtin_ids; printf '%s\n' "${MAME_GAMES[@]}"; }
+builtin_field() { jq -r --arg k "$2" '.[$k] // empty' "$ARCADE_DIR/games/$1/game.json" 2>/dev/null; }
 
 game_title() {
+  if is_mame "$1"; then :; elif is_builtin "$1"; then builtin_field "$1" title; return; fi
   case "$1" in
-    brick)  echo "Brick Blitz" ;;
     pacman) echo "Pac-Man" ;;
     galaga) echo "Galaga" ;;
     ssf2)   echo "Super Street Fighter II" ;;
@@ -91,10 +109,13 @@ rom_dir() {
   printf '%s\n' "$d"
 }
 
-play_brick() {
-  [[ -x $QUICKSHELL ]] || { say "Brick Blitz" "Quickshell is missing ($QUICKSHELL). It ships with Omarchy; reinstall the omarchy-shell package."; return 1; }
+# A built-in game runs as its own Quickshell process, one instance at a time.
+play_builtin() {
+  local id=$1 title
+  title=$(game_title "$id")
+  [[ -x $QUICKSHELL ]] || { say "$title" "Quickshell is missing ($QUICKSHELL). It ships with Omarchy; reinstall the omarchy-shell package."; return 1; }
   mkdir -p "$STATE"
-  exec "$QUICKSHELL" -n -p "$ARCADE_DIR/game/shell.qml"
+  exec "$QUICKSHELL" -n -p "$ARCADE_DIR/games/$id/shell.qml"
 }
 
 # Is someone at a terminal to answer a password prompt? ARCADE_INTERACTIVE=0|1
@@ -205,23 +226,29 @@ play_mame() {
 
 cmd_play() {
   local id=${1:-}
-  case "$id" in
-    brick) play_brick ;;
-    pacman|galaga|ssf2) play_mame "$id" ;;
-    "") echo "usage: arcade play <$(IFS='|'; echo "${GAMES[*]}")>" >&2; return 2 ;;
-    *) echo "arcade: unknown game '$id' (try: arcade list)" >&2; return 2 ;;
-  esac
+  if [[ -z $id ]]; then
+    echo "usage: arcade play <$(all_games | paste -sd '|' -)>" >&2; return 2
+  elif is_mame "$id"; then
+    play_mame "$id"
+  elif is_builtin "$id"; then
+    play_builtin "$id"
+  else
+    echo "arcade: unknown game '$id' (try: arcade list)" >&2; return 2
+  fi
 }
 
 # What each game needs. --json is what the bar menu reads:
-#   [{id, title, state: ready|no-mame|no-rom|rom-found, note}]
+#   [{id, title, kind: builtin|mame, state: ready|no-mame|no-rom|rom-found, note}]
 cmd_list() {
-  local id dir state status note json=0 rows=()
+  local id dir state status note kind json=0 rows=()
   [[ ${1:-} == --json ]] && json=1
   dir=$(rom_dir)
-  for id in "${GAMES[@]}"; do
-    if [[ $id == brick ]]; then
-      state=ready;     status="ready";                          note="built in"
+  while IFS= read -r id; do
+    kind=mame
+    if ! is_mame "$id"; then
+      kind=builtin
+      note=$(builtin_field "$id" note); [[ -n $note ]] || note="built in"
+      state=ready;     status="ready"
     elif [[ ! -x $MAME ]]; then
       state=no-mame;   status="MAME installs on first play";    note="installs MAME first"
     elif have_rom "$id" "$dir"; then
@@ -230,12 +257,12 @@ cmd_list() {
       state=no-rom;    status="add your own $id.zip to $dir";   note="needs $id.zip"
     fi
     if (( json )); then
-      rows+=("$(jq -nc --arg id "$id" --arg title "$(game_title "$id")" --arg state "$state" --arg note "$note" \
-        '{id: $id, title: $title, state: $state, note: $note}')")
+      rows+=("$(jq -nc --arg id "$id" --arg title "$(game_title "$id")" --arg kind "$kind" --arg state "$state" --arg note "$note" \
+        '{id: $id, title: $title, kind: $kind, state: $state, note: $note}')")
     else
-      printf '%-8s %-26s %s\n' "$id" "$(game_title "$id")" "$status"
+      printf '%-10s %-26s %s\n' "$id" "$(game_title "$id")" "$status"
     fi
-  done
+  done < <(all_games)
   (( json )) && printf '%s\n' "${rows[@]}" | jq -sc . || true
 }
 
